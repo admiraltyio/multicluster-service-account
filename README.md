@@ -21,7 +21,7 @@ In this getting started guide, we're going to install multicluster-service-accou
 Install multicluster-service-account in cluster1 and cluster2:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/latest
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.1.0
 MANIFEST_URL=$RELEASE_URL/install.yaml
 kubectl apply -f $MANIFEST_URL --context cluster1
 kubectl apply -f $MANIFEST_URL --context cluster2
@@ -34,7 +34,7 @@ First, get the service-account-import-controller binary for your operating syste
 ```bash
 OS=linux # or darwin (i.e., OS X) or windows
 ARCH=amd64 # if you're on a different platform, you must know how to build from source
-BINARY_URL="$BASE_URL/service-account-import-controller-$OS-$ARCH"
+BINARY_URL="$RELEASE_URL/service-account-import-controller-$OS-$ARCH"
 curl -Lo service-account-import-controller $BINARY_URL
 chmod +x service-account-import-controller
 sudo mv service-account-import-controller /usr/local/bin
