@@ -1,6 +1,6 @@
 # Multicluster-Service-Account
 
-Multicluster-service-account makes it easy to use Kubernetes service accounts as multicluster identities. It imports and automounts remote service account tokens inside pods, for them to call the Kubernetes APIs of other clusters. Multicluster-service-account works well with multicluster-controller, but any cross-cluster Kubernetes client can benefit from it.
+Multicluster-service-account makes it easy to use Kubernetes service accounts as multicluster identities. It imports and automounts remote service account tokens inside pods, for them to call the Kubernetes APIs of other clusters. Multicluster-service-account works well with [multicluster-controller](https://github.com/admiraltyio/multicluster-controller), but any cross-cluster Kubernetes client can benefit from it.
 
 Why? Check out [Admiralty's blog post introducing multicluster-service-account](https://admiralty.io/blog/introducing-multicluster-service-account).
 
@@ -115,7 +115,7 @@ EOF
 
 # Wait until the service account import controller has created the corresponding secret.
 sleep 1
-while [$(kubectl get secret -l multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister-foo --no-headers | wc -l) -eq 0]
+while [ $(kubectl get secret -l multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister-foo --no-headers | wc -l) -eq 0 ]
 do
   sleep 1
 done
