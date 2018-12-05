@@ -14,71 +14,35 @@ Multicluster-service-account consists of:
 
 ## Getting Started
 
-In this getting started guide, we're going to install multicluster-service-account symmetrically in two clusters (asymmetric setups are possible). Then, we're going to run a multicluster client example. We assume that you are a cluster admin on two clusters, associated with the contexts "cluster1" and "cluster2" in your kubeconfig.
+We assume that you are a cluster admin on two clusters, associated with, e.g., the contexts "cluster1" and "cluster2" in your kubeconfig. We're going to install multicluster-service-account and run a multicluster client example in cluster1, listing pods in cluster2.
+
+```bash
+CLUSTER1=cluster1 # change me
+CLUSTER2=cluster2 # change me
+```
 
 ### Step 1: Installation
 
-Install multicluster-service-account in cluster1 and cluster2:
+Install multicluster-service-account in cluster1:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.1.0
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.2.0
 MANIFEST_URL=$RELEASE_URL/install.yaml
-kubectl apply -f $MANIFEST_URL --context cluster1
-kubectl apply -f $MANIFEST_URL --context cluster2
+kubectl apply -f $MANIFEST_URL --context $CLUSTER1
 ```
 
-Cluster1 and cluster2 are now able to import service accounts, but they haven't been given permission to import from each other yet. This is a chicken-and-egg problem: cluster1 and cluster2 each need a token from the other (for the `service-account-import-controller-remote` service account), before they can import more service accounts from each other. To bootstrap them, we're temporarily going to run a service account import controller out-of-cluster, using your kubeconfig, and create service account imports.
-
-First, get the service-account-import-controller binary for your operating system and architecture:
+Cluster1 is now able to import service accounts, but it hasn't been given permission to import them from cluster2 yet. This is a chicken-and-egg problem: cluster1 needs a token from cluster2, before it can import service accounts from it. To solve this problem, download the kubemcsa binary and run the bootstrap command:
 
 ```bash
 OS=linux # or darwin (i.e., OS X) or windows
 ARCH=amd64 # if you're on a different platform, you must know how to build from source
-BINARY_URL="$RELEASE_URL/service-account-import-controller-$OS-$ARCH"
-curl -Lo service-account-import-controller $BINARY_URL
-chmod +x service-account-import-controller
-sudo mv service-account-import-controller /usr/local/bin
+BINARY_URL="$RELEASE_URL/kubemcsa-$OS-$ARCH"
+curl -Lo kubemcsa $BINARY_URL
+chmod +x kubemcsa
+sudo mv kubemcsa /usr/local/bin
+
+kubemcsa bootstrap $CLUSTER1 $CLUSTER2
 ```
-
-Then, for each cluster, set the current context, run service-account-import-controller, import the `service-account-import-controller-remote` service account of the other cluster, and annotate the in-cluster service account import controller to automount the imported secret:
-
-```bash
-LOCAL_CLUSTER=cluster1
-kubectl config use-context $LOCAL_CLUSTER
-service-account-import-controller
-
-# in another terminal:
-REMOTE_CLUSTER=cluster2
-NAMESPACE=multicluster-service-account
-
-cat <<EOF | kubectl create -f -
-apiVersion: multicluster.admiralty.io/v1alpha1
-kind: ServiceAccountImport
-metadata:
-  name: $REMOTE_CLUSTER
-  namespace: $NAMESPACE
-spec:
-  clusterName: $REMOTE_CLUSTER
-  namespace: $NAMESPACE
-  name: service-account-import-controller-remote
-EOF
-
-kubectl patch deployment service-account-import-controller -n $NAMESPACE -p '{
-  "spec":{
-    "template":{
-      "metadata":{
-        "annotations":{
-          "multicluster.admiralty.io/service-account-import.name":"'$REMOTE_CLUSTER'"
-        }
-      }
-    }
-  }
-}'
-
-# Stop service-account-import-controller in the first terminal (Ctrl+C).
-```
-
-Run the snippet above again, switching cluster1 and cluster2. Tokens have now been exchanged between the two clusters, and the admission controllers installed in-cluster have mounted those inside the in-cluster service account import controllers. cluster1 and cluster2 can now import service accounts from each other without outside help.
 
 ### Step 2: Example
 
@@ -89,49 +53,41 @@ The `multicluster-client` example includes:
   - a dummy NGINX deployment (to have pods to list);
 - in cluster1:
   - a service account import named `cluster2-default-pod-lister`, importing `pod-lister` from the default namespace of cluster2;
-  - a pod running `multicluster-client`, annotated to automount `cluster2-default-pod-lister`'s secret—it will list the pods in the default namespace of cluster2, and stop without restarting (we'll check the logs).
+  - a `multicluster-client` job, whose pod is annotated to automount `cluster2-default-pod-lister`'s secret—it will list the pods in the default namespace of cluster2, and stop without restarting (we'll check the logs).
 
 ```bash
-LOCAL_CLUSTER=cluster1
-REMOTE_CLUSTER=cluster2
-kubectl config use-context $REMOTE_CLUSTER
+kubectl config use-context $CLUSTER2
 kubectl create serviceaccount pod-lister
 kubectl create role pod-lister --verb=list --resource=pods
 kubectl create rolebinding pod-lister --role=pod-lister \
   --serviceaccount=default:pod-lister
 kubectl run nginx --image nginx
 
-kubectl config use-context $LOCAL_CLUSTER
+kubectl config use-context $CLUSTER1
 cat <<EOF | kubectl create -f -
 apiVersion: multicluster.admiralty.io/v1alpha1
 kind: ServiceAccountImport
 metadata:
-  name: $REMOTE_CLUSTER-default-pod-lister
+  name: $CLUSTER2-default-pod-lister
 spec:
-  clusterName: $REMOTE_CLUSTER
+  clusterName: $CLUSTER2
   namespace: default
   name: pod-lister
-EOF
-
-# Wait until the service account import controller has created the corresponding secret.
-sleep 1
-while [ $(kubectl get secret -l multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister-foo --no-headers | wc -l) -eq 0 ]
-do
-  sleep 1
-done
-
-cat <<EOF | kubectl create -f -
-apiVersion: v1
-kind: Pod
+---
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: multicluster-client
-  annotations:
-    multicluster.admiralty.io/service-account-import.name: $REMOTE_CLUSTER-default-pod-lister
 spec:
-  restartPolicy: Never
-  containers:
-  - name: multicluster-client
-    image: quay.io/admiralty/multicluster-service-account-example-multicluster-client:latest
+  template:
+    metadata:
+      annotations:
+        multicluster.admiralty.io/service-account-import.name: $CLUSTER2-default-pod-lister
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: multicluster-client
+        image: quay.io/admiralty/multicluster-service-account-example-multicluster-client:latest
 EOF
 ```
 
@@ -139,20 +95,18 @@ In cluster1, check that:
 
 1. The service account import controller created a secret for the `cluster2-default-pod-lister` service account import, containing the token and namespace of the remote service account, and the URL and root certificate of the remote Kubernetes API:
     ```bash
-    kubectl get secret -l multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister -o yaml
+    kubectl get secret -l multicluster.admiralty.io/service-account-import.name=$CLUSTER2-default-pod-lister -o yaml
     # the data is base64-encoded
     ```
 1. The service account import secret was mounted inside the `multicluster-client` pod by the service account import admission controller:
     ```bash
-    kubectl get pod multicluster-client -o yaml
+    kubectl get pod -l job-name=multicluster-client -o yaml
     # look at volumes and volume mounts
     ```
 1. The `multicluster-client` pod was able to list pods in the default namespace of cluster2:
     ```bash
-    kubectl logs multicluster-client
+    kubectl logs job/multicluster-client
     ```
-
-You can run the symmetrical example if you want.
 
 ## Service Account Imports
 
@@ -178,10 +132,6 @@ spec:
   name: pod-lister
 ```
 
-### Security
-
-Creating service account imports should be reserved to multicluster admins!
-
 ## Annotations
 
 The `multicluster.admiralty.io/service-account-import.name` annotation on a pod (or pod template) tells the service account import admission controller to automount the corresponding secrets inside it. If a pod needs several service account imports, separate their names with commas, e.g.:
@@ -196,6 +146,8 @@ metadata:
 spec:
   # ...
 ```
+
+Note: just like with local service accounts, there is a race condition if a service account import and a pod requesting it are created at the same time: the service account import admission controller will likely reject the pod because the secret to automount won't be ready. Luckily, if the pod is controlled by another object, such as a deployment, job, etc., pod creation will be retried.
 
 ## Client Configuration
 

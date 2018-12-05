@@ -66,24 +66,18 @@ func (h *Handler) Handle(ctx context.Context, req atypes.Request) atypes.Respons
 func (h *Handler) mutatePodsFn(ctx context.Context, req atypes.Request, pod *corev1.Pod) error {
 	saiNamesStr, ok := pod.Annotations[saiName]
 	if !ok {
-		log.Printf("no service account import name annotation")
 		return nil
 	}
-	log.Printf("service account import names: %s", saiNamesStr)
 
 	saiNames := strings.Split(saiNamesStr, ",")
 	for _, saiName := range saiNames {
 		sai := &v1alpha1.ServiceAccountImport{}
 		if err := h.client.Get(ctx, types.NamespacedName{Namespace: req.AdmissionRequest.Namespace, Name: saiName}, sai); err != nil {
-			// TODO: validating admission webhook shouldn't let this happen
-			log.Printf("cannot find service account import %s:%s", req.AdmissionRequest.Namespace, saiName)
-			continue
+			return fmt.Errorf("cannot find service account import %s:%s", req.AdmissionRequest.Namespace, saiName)
 		}
 
 		if len(sai.Status.Secrets) == 0 {
-			// TODO: validating admission webhook shouldn't let this happen
-			log.Printf("service account import %s has no token", saiName)
-			continue
+			return fmt.Errorf("service account import %s:%s has no token, verify that the remote service account exists or retry when the secret has been created by the service account import controller", req.AdmissionRequest.Namespace, saiName)
 		}
 
 		secretName := sai.Status.Secrets[0].Name
