@@ -29,4 +29,7 @@ bin
 # Visual Studio Code
 .vscode
 
+# build artifacts
 _out
+# generated
+release/kustomization.yaml

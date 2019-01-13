@@ -5,13 +5,11 @@ build:
   - imageName: quay.io/admiralty/service-account-import-controller
     workspace: _out
     docker:
-      dockerfilePath: build/Dockerfile
       buildArgs:
         target: cmd/service-account-import-controller
   - imageName: quay.io/admiralty/service-account-import-admission-controller
     workspace: _out
     docker:
-      dockerfilePath: build/Dockerfile
       buildArgs:
         target: cmd/service-account-import-admission-controller
 deploy:
