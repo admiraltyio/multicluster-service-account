@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"admiralty.io/multicluster-service-account/pkg/apis/multicluster/v1alpha1"
+	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,7 +33,9 @@ import (
 	atypes "sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
 )
 
-var saiName string = "multicluster.admiralty.io/service-account-import.name"
+var (
+	AnnotationKeyServiceAccountImportName = "multicluster.admiralty.io/service-account-import.name"
+)
 
 // Handler handles pod admission requests, mutating pods that request service account imports.
 // It is implemented by the service-account-import-admission-controller command, via controller-runtime.
@@ -48,36 +51,71 @@ type Handler struct {
 
 func (h *Handler) Handle(ctx context.Context, req atypes.Request) atypes.Response {
 	pod := &corev1.Pod{}
-
 	err := h.decoder.Decode(req, pod)
 	if err != nil {
+		err := fmt.Errorf("cannot decode admission request for object %s in namespace %s: %v",
+			req.AdmissionRequest.Name, req.AdmissionRequest.Namespace, err)
+		log.Println(err)
 		return admission.ErrorResponse(http.StatusBadRequest, err)
 	}
-	log.Printf("Mutating pod %s in namespace %s", req.AdmissionRequest.Name, req.AdmissionRequest.Namespace)
-	copy := pod.DeepCopy()
 
+	copy := pod.DeepCopy()
 	err = h.mutatePodsFn(ctx, req, copy)
 	if err != nil {
+		err := fmt.Errorf("cannot handle admission request for pod %s in namespace %s: %v",
+			getName(pod, req.AdmissionRequest), getNamespace(pod, req.AdmissionRequest), err)
+		log.Println(err)
 		return admission.ErrorResponse(http.StatusInternalServerError, err)
 	}
+
 	return admission.PatchResponse(pod, copy)
 }
 
+func getName(pod *corev1.Pod, req *admissionv1beta1.AdmissionRequest) string {
+	if pod.Name != "" {
+		return pod.Name
+	}
+	if req.Name != "" {
+		return req.Name
+	}
+	if pod.GenerateName != "" {
+		return pod.GenerateName + "... (name not generated yet)"
+	}
+	return "" // should not happend
+}
+
+func getNamespace(pod *corev1.Pod, req *admissionv1beta1.AdmissionRequest) string {
+	if pod.Namespace != "" {
+		return pod.Namespace
+	}
+	if req.Namespace != "" {
+		return req.Namespace
+	}
+	return "" // should not happend
+}
+
 func (h *Handler) mutatePodsFn(ctx context.Context, req atypes.Request, pod *corev1.Pod) error {
-	saiNamesStr, ok := pod.Annotations[saiName]
+	saiNamesStr, ok := pod.Annotations[AnnotationKeyServiceAccountImportName]
 	if !ok {
 		return nil
 	}
 
+	ns := getNamespace(pod, req.AdmissionRequest)
+
 	saiNames := strings.Split(saiNamesStr, ",")
 	for _, saiName := range saiNames {
 		sai := &v1alpha1.ServiceAccountImport{}
-		if err := h.client.Get(ctx, types.NamespacedName{Namespace: req.AdmissionRequest.Namespace, Name: saiName}, sai); err != nil {
-			return fmt.Errorf("cannot find service account import %s:%s", req.AdmissionRequest.Namespace, saiName)
+		if err := h.client.Get(ctx, types.NamespacedName{Namespace: ns, Name: saiName}, sai); err != nil {
+			// throwing even when simply not found, to resolve race condition when pod and SAI are created concurrently
+			// the controller trying to create the pod should retry later
+			return fmt.Errorf("cannot find service account import %s in namespace %s", saiName, ns)
 		}
 
 		if len(sai.Status.Secrets) == 0 {
-			return fmt.Errorf("service account import %s:%s has no token, verify that the remote service account exists or retry when the secret has been created by the service account import controller", req.AdmissionRequest.Namespace, saiName)
+			// throwing to resolve race condition, idem above
+			return fmt.Errorf(`service account import %s in namespace %s has no token, 
+verify that the remote service account exists or retry when the secret has been created by the service account import controller`,
+				ns, saiName)
 		}
 
 		secretName := sai.Status.Secrets[0].Name
@@ -88,8 +126,11 @@ func (h *Handler) mutatePodsFn(ctx context.Context, req atypes.Request, pod *cor
 		})
 
 		for i := range pod.Spec.Containers {
-			pod.Spec.Containers[i].VolumeMounts = append(pod.Spec.Containers[i].VolumeMounts, corev1.VolumeMount{Name: secretName, ReadOnly: true,
-				MountPath: fmt.Sprintf("/var/run/secrets/admiralty.io/serviceaccountimports/%s", saiName)})
+			pod.Spec.Containers[i].VolumeMounts = append(pod.Spec.Containers[i].VolumeMounts,
+				corev1.VolumeMount{
+					Name:      secretName,
+					ReadOnly:  true,
+					MountPath: fmt.Sprintf("/var/run/secrets/admiralty.io/serviceaccountimports/%s", saiName)})
 		}
 	}
 
