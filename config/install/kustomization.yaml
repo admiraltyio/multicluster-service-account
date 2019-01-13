@@ -4,8 +4,3 @@ resources:
 - automount.yaml
 - importer.yaml
 - ../crds/multicluster_v1alpha1_serviceaccountimport.yaml
-imageTags:
-- name: quay.io/admiralty/service-account-import-admission-controller
-  newTag: 0.2.0
-- name: quay.io/admiralty/service-account-import-controller
-  newTag: 0.2.0

@@ -1,0 +1,7 @@
+bases:
+- ../config/install/
+imageTags:
+- name: quay.io/admiralty/service-account-import-admission-controller
+  newTag: RELEASE
+- name: quay.io/admiralty/service-account-import-controller
+  newTag: RELEASE

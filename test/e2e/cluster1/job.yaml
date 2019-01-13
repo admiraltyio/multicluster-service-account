@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: multicluster-client
+spec:
+  template:
+    metadata:
+      annotations:
+        multicluster.admiralty.io/service-account-import.name: cluster2-default-pod-lister
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: multicluster-client
+        image: quay.io/admiralty/multicluster-service-account-example-multicluster-client

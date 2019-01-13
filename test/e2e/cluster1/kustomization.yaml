@@ -1,0 +1,3 @@
+resources:
+- serviceaccountimport.yaml
+- job.yaml
