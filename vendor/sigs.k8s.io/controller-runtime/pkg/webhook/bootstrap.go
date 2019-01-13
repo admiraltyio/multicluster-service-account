@@ -63,6 +63,10 @@ func (s *Server) setServerDefault() {
 	if len(s.CertDir) == 0 {
 		s.CertDir = path.Join("k8s-webhook-server", "cert")
 	}
+	if s.DisableWebhookConfigInstaller == nil {
+		diwc := false
+		s.DisableWebhookConfigInstaller = &diwc
+	}
 
 	if s.Client == nil {
 		cfg, err := config.GetConfig()
@@ -293,6 +297,17 @@ func (s *Server) validatingWHConfigs() (runtime.Object, error) {
 }
 
 func (s *Server) admissionWebhook(path string, wh *admission.Webhook) (*admissionregistration.Webhook, error) {
+	if wh.NamespaceSelector == nil && len(s.Service.Namespace) > 0 {
+		wh.NamespaceSelector = &metav1.LabelSelector{
+			MatchExpressions: []metav1.LabelSelectorRequirement{
+				{
+					Key:      "control-plane",
+					Operator: metav1.LabelSelectorOpDoesNotExist,
+				},
+			},
+		}
+	}
+
 	webhook := &admissionregistration.Webhook{
 		Name:              wh.GetName(),
 		Rules:             wh.Rules,
