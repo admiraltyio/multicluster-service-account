@@ -64,9 +64,8 @@ func main() {
 	deployName := os.Getenv("DEPLOYMENT_NAME")
 
 	s, err := webhook.NewServer(deployName, m, webhook.ServerOptions{
-		Port:                 9876, // TODO debug why cannot default to 443
-		CertDir:              "/tmp/cert",
-		InstallWebhookConfig: true,
+		Port:    9876, // TODO debug why cannot default to 443
+		CertDir: "/tmp/cert",
 		BootstrapOptions: &webhook.BootstrapOptions{
 			Secret: &types.NamespacedName{
 				Namespace: ns,
