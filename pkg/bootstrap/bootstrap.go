@@ -164,7 +164,9 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		}
 		return false, nil
 	})
-	wait.PollImmediate(time.Second, time.Second*10, f)
+	if err := wait.PollImmediate(time.Second, time.Minute, f); err != nil {
+		return fmt.Errorf("timeout: %v", err)
+	}
 
 	saSecret, err := srcClientset.CoreV1().Secrets(sa.Namespace).Get(secretName, metav1.GetOptions{})
 	if err != nil {
@@ -190,8 +192,14 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 			return err
 		}
 		fmt.Printf("service account import \"%s\" already exists in namespace \"%s\" in target cluster \"%s\"\n", sai.Name, sai.Namespace, dstCtx)
+		// in this case, the server doesn't return the state of sai, therefore it's missing a uid,
+		// and the controller reference created below on the secret would be invalid if we do not get it
+		if err := dstClient.Get(context.TODO(), types.NamespacedName{Name: sai.Name, Namespace: sai.Namespace}, sai); err != nil {
+			return fmt.Errorf("cannot get service account import \"%s\" in namespace \"%s\" in target cluster \"%s\": %v", sai.Name, sai.Namespace, dstCtx, err)
+		}
+	} else {
+		fmt.Printf("created service account import \"%s\" in namespace \"%s\" in target cluster \"%s\"\n", sai.Name, sai.Namespace, dstCtx)
 	}
-	fmt.Printf("created service account import \"%s\" in namespace \"%s\" in target cluster \"%s\"\n", sai.Name, sai.Namespace, dstCtx)
 
 	// TODO: reuse code in importer
 	saiSecret := &corev1.Secret{}
@@ -222,7 +230,9 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		}
 		return false, nil
 	})
-	wait.PollImmediate(time.Second, time.Second*10, f)
+	if err := wait.PollImmediate(time.Second, time.Minute, f); err != nil {
+		return fmt.Errorf("timeout: %v", err)
+	}
 
 	patch := []byte(fmt.Sprintf("{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"multicluster.admiralty.io/service-account-import.name\":\"%s\"}}}}}", sai.Name))
 	_, err = dstClientset.AppsV1().Deployments(namespace).Patch("service-account-import-controller", types.StrategicMergePatchType, patch)
