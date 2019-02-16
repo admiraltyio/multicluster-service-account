@@ -129,3 +129,32 @@ subjects:
 - kind: ServiceAccount
   name: service-account-import-admission-controller
   namespace: multicluster-service-account-webhook
+---
+# Create MutatingWebhookConfiguration so failure policy is active right after installation,
+# we still use the Webhook installer to populate certs
+# https://book.kubebuilder.io/beyond_basics/webhook_installer_generator.html
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: service-account-import-admission-controller
+webhooks:
+- clientConfig:
+    caBundle: ""
+    service:
+      name: service-account-import-admission-controller
+      namespace: multicluster-service-account-webhook
+      path: /mutate-pods
+  failurePolicy: Fail
+  name: service-account-import-admission-controller.multicluster.admiralty.io
+  namespaceSelector:
+    matchLabels:
+      multicluster-service-account: enabled
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods

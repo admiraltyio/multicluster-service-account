@@ -1,5 +1,6 @@
 set -euo pipefail
 
 go generate ./pkg/... ./cmd/...
-go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go all
+# go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go all
+# go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go webhook --input-dir pkg/automount
 go fmt ./pkg/... ./cmd/...

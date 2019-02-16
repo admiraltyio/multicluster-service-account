@@ -44,6 +44,12 @@ var (
 	webhookName                           = "service-account-import-admission-controller.multicluster.admiralty.io"
 )
 
+// +kubebuilder:webhook:port=9876,cert-dir=/tmp/cert
+// +kubebuilder:webhook:service=multicluster-service-account-webhook:service-account-import-admission-controller
+// +kubebuilder:webhook:selector=app:service-account-import-admission-controller
+// +kubebuilder:webhook:secret=multicluster-service-account-webhook:service-account-import-admission-controller-cert
+// +kubebuilder:webhook:mutating-webhook-config-name=service-account-import-admission-controller
+
 func NewServer(mgr manager.Manager, namespace string) (*webhook.Server, error) {
 	w, err := NewWebhook(mgr)
 	if err != nil {
@@ -56,6 +62,7 @@ func NewServer(mgr manager.Manager, namespace string) (*webhook.Server, error) {
 		Port:    9876, // TODO debug why cannot default to 443
 		CertDir: "/tmp/cert",
 		BootstrapOptions: &webhook.BootstrapOptions{
+			MutatingWebhookConfigName: deployName,
 			Secret: &types.NamespacedName{
 				Namespace: namespace,
 				Name:      deployName + "-cert",
@@ -81,17 +88,27 @@ func NewServer(mgr manager.Manager, namespace string) (*webhook.Server, error) {
 	return s, nil
 }
 
+// +kubebuilder:webhook:name=service-account-import-admission-controller.multicluster.admiralty.io
+// +kubebuilder:webhook:type=mutating
+// +kubebuilder:webhook:path=/mutate-pods
+// +kubebuilder:webhook:verbs=create
+// +kubebuilder:webhook:groups=,versions=v1,resources=pods
+// +kubebuilder:webhook:failure-policy=fail
+
+// TODO: annotation for namespace selector
+
 // https://kubernetes.slack.com/archives/CAR30FCJZ/p1547254570666900
 func NewWebhook(mgr manager.Manager) (*admission.Webhook, error) {
 	return builder.NewWebhookBuilder().
 		Name(webhookName).
 		Mutating().
+		Path("/mutate-pods").
 		Operations(admissionregistrationv1beta1.Create).
-		WithManager(mgr).
 		ForType(&corev1.Pod{}).
-		Handlers(&Handler{}).
 		FailurePolicy(admissionregistrationv1beta1.Fail).
 		NamespaceSelector(&metav1.LabelSelector{MatchLabels: map[string]string{"multicluster-service-account": "enabled"}}).
+		WithManager(mgr).
+		Handlers(&Handler{}).
 		Build()
 }
 
@@ -172,8 +189,7 @@ func (h *Handler) mutatePodsFn(ctx context.Context, req atypes.Request, pod *cor
 		if len(sai.Status.Secrets) == 0 {
 			// throwing to resolve race condition, idem above
 			return fmt.Errorf(`service account import %s in namespace %s has no token, 
-verify that the remote service account exists or retry when the secret has been created by the service account import controller`,
-				ns, saiName)
+verify that the remote service account exists or retry when the secret has been created by the service account import controller`, saiName, ns)
 		}
 
 		secretName := sai.Status.Secrets[0].Name
