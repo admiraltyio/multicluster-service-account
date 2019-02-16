@@ -71,11 +71,20 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		return err
 	}
 
+	// The source cluster may not have have multicluster-service-account installed,
+	// but it needs a service account that can read other service accounts and their token secrets.
+	// We create that service account in the multicluster-service-account namespace,
+	// and create that namespace if it doesn't exist.
 	ns := &corev1.Namespace{}
 	ns.Name = namespace
 	_, err = srcClientset.CoreV1().Namespaces().Create(ns)
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+		fmt.Printf("namespace \"%s\" already exists in source cluster \"%s\"\n", namespace, srcCtx)
+	} else {
+		fmt.Printf("created namespace \"%s\" in source cluster \"%s\"\n", namespace, srcCtx)
 	}
 
 	cr := &rbacv1.ClusterRole{
@@ -91,8 +100,13 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		},
 	}
 	_, err = srcClientset.RbacV1().ClusterRoles().Create(cr)
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+		fmt.Printf("cluster role \"%s\" already exists in source cluster \"%s\"\n", clusterRoleName, srcCtx)
+	} else {
+		fmt.Printf("created cluster role \"%s\" in source cluster \"%s\"\n", clusterRoleName, srcCtx)
 	}
 
 	sa := &corev1.ServiceAccount{
@@ -102,8 +116,13 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		},
 	}
 	_, err = srcClientset.CoreV1().ServiceAccounts(namespace).Create(sa)
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+		fmt.Printf("service account \"%s\" already exists in namespace \"%s\" in source cluster \"%s\"\n", sa.Name, namespace, srcCtx)
+	} else {
+		fmt.Printf("created service account \"%s\" in namespace \"%s\" in source cluster \"%s\"\n", sa.Name, namespace, srcCtx)
 	}
 
 	crb := &rbacv1.ClusterRoleBinding{
@@ -123,15 +142,21 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		},
 	}
 	_, err = srcClientset.RbacV1().ClusterRoleBindings().Create(crb)
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+		fmt.Printf("cluster role binding \"%s\" already exists in source cluster \"%s\"\n", crb.Name, srcCtx)
+	} else {
+		fmt.Printf("created cluster role binding \"%s\" in source cluster \"%s\"\n", crb.Name, srcCtx)
 	}
 
 	var secretName string
+	fmt.Printf("waiting until service account \"%s\" in namespace \"%s\" in source cluster \"%s\" has a token...\n", sa.Name, namespace, srcCtx)
 	f := wait.ConditionFunc(func() (done bool, err error) {
 		getSA, err := srcClientset.CoreV1().ServiceAccounts(sa.Namespace).Get(sa.Name, metav1.GetOptions{})
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("cannot get service account \"%s\" in namespace \"%s\" in source cluster \"%s\": %v", sa.Name, namespace, srcCtx, err)
 		}
 		if len(getSA.Secrets) > 0 {
 			secretName = getSA.Secrets[0].Name
@@ -143,10 +168,10 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 
 	saSecret, err := srcClientset.CoreV1().Secrets(sa.Namespace).Get(secretName, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot get secret \"%s\" in namespace \"%s\" in source cluster \"%s\": %v", secretName, namespace, srcCtx, err)
 	}
 	if saSecret.Data == nil {
-		return fmt.Errorf("service account token is empty")
+		return fmt.Errorf("secret \"%s\" in namespace \"%s\" in source cluster \"%s\" is empty", secretName, namespace, srcCtx)
 	}
 
 	sai := &v1alpha1.ServiceAccountImport{
@@ -160,9 +185,13 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 			Name:        dstCtx,
 		},
 	}
-	if err := dstClient.Create(context.TODO(), sai); err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err := dstClient.Create(context.TODO(), sai); err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+		fmt.Printf("service account import \"%s\" already exists in namespace \"%s\" in target cluster \"%s\"\n", sai.Name, sai.Namespace, dstCtx)
 	}
+	fmt.Printf("created service account import \"%s\" in namespace \"%s\" in target cluster \"%s\"\n", sai.Name, sai.Namespace, dstCtx)
 
 	// TODO: reuse code in importer
 	saiSecret := &corev1.Secret{}
@@ -179,12 +208,14 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 	}
 	saiSecret, err = dstClientset.CoreV1().Secrets(saiSecret.Namespace).Create(saiSecret)
 	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
+		return fmt.Errorf("cannot create secret \"%s\" in namespace \"%s\" in target cluster \"%s\": %v", saiSecret.GenerateName, saiSecret.Namespace, dstCtx, err)
 	}
+	fmt.Printf("created secret \"%s\" in namespace \"%s\" in target cluster \"%s\"\n", saiSecret.GenerateName, saiSecret.Namespace, dstCtx)
 
+	fmt.Printf("waiting until service account import \"%s\" in namespace \"%s\" in target cluster \"%s\" adopts token...\n", sai.Name, sai.Namespace, dstCtx)
 	f = wait.ConditionFunc(func() (done bool, err error) {
 		if err := dstClient.Get(context.TODO(), types.NamespacedName{Name: sai.Name, Namespace: sai.Namespace}, sai); err != nil {
-			return false, err
+			return false, fmt.Errorf("cannot get service account import \"%s\" in namespace \"%s\" in target cluster \"%s\": %v", sai.Name, sai.Namespace, dstCtx, err)
 		}
 		if len(sai.Status.Secrets) > 0 {
 			return true, nil
@@ -196,8 +227,9 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 	patch := []byte(fmt.Sprintf("{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"multicluster.admiralty.io/service-account-import.name\":\"%s\"}}}}}", sai.Name))
 	_, err = dstClientset.AppsV1().Deployments(namespace).Patch("service-account-import-controller", types.StrategicMergePatchType, patch)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot annotate service account import controller in target cluster \"%s\": %v", dstCtx, err)
 	}
+	fmt.Printf("annotated service account import controller in target cluster \"%s\"\n", dstCtx)
 
 	return nil
 }
