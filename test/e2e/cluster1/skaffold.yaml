@@ -12,6 +12,11 @@ build:
     docker:
       buildArgs:
         target: cmd/service-account-import-admission-controller
+  - imageName: quay.io/admiralty/multicluster-service-account-example-multicluster-client
+    workspace: _out
+    docker:
+      buildArgs:
+        target: examples/multicluster-client
 deploy:
   kustomize:
     kustomizePath: config/install/
