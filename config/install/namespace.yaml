@@ -2,3 +2,10 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: multicluster-service-account
+  labels:
+    multicluster-service-account: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: multicluster-service-account-webhook

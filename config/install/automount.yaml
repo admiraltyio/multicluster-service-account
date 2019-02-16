@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: service-account-import-admission-controller
+  namespace: multicluster-service-account-webhook
   labels:
     app: service-account-import-admission-controller
 spec:
@@ -49,12 +50,14 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: service-account-import-admission-controller-cert
+  namespace: multicluster-service-account-webhook
 # data will be populated by controller-runtime
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: service-account-import-admission-controller
+  namespace: multicluster-service-account-webhook
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -125,3 +128,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: service-account-import-admission-controller
+  namespace: multicluster-service-account-webhook
