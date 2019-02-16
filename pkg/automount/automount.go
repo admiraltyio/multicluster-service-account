@@ -21,21 +21,79 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"admiralty.io/multicluster-service-account/pkg/apis/multicluster/v1alpha1"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
+	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/builder"
 	atypes "sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
 )
 
 var (
 	AnnotationKeyServiceAccountImportName = "multicluster.admiralty.io/service-account-import.name"
+	webhookName                           = "service-account-import-admission-controller.multicluster.admiralty.io"
 )
+
+func NewServer(mgr manager.Manager, namespace string) (*webhook.Server, error) {
+	w, err := NewWebhook(mgr)
+	if err != nil {
+		return nil, fmt.Errorf("cannot build webhook: %v", err)
+	}
+
+	deployName := os.Getenv("DEPLOYMENT_NAME")
+
+	s, err := webhook.NewServer(deployName, mgr, webhook.ServerOptions{
+		Port:    9876, // TODO debug why cannot default to 443
+		CertDir: "/tmp/cert",
+		BootstrapOptions: &webhook.BootstrapOptions{
+			Secret: &types.NamespacedName{
+				Namespace: namespace,
+				Name:      deployName + "-cert",
+			},
+			Service: &webhook.Service{
+				Namespace: namespace,
+				Name:      deployName,
+				// Selectors should select the pods that runs this webhook server.
+				Selectors: map[string]string{
+					"app": deployName,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot create server: %v", err)
+	}
+
+	if err := s.Register(w); err != nil {
+		return nil, fmt.Errorf("cannot register webhook with server: %v", err)
+	}
+
+	return s, nil
+}
+
+// https://kubernetes.slack.com/archives/CAR30FCJZ/p1547254570666900
+func NewWebhook(mgr manager.Manager) (*admission.Webhook, error) {
+	return builder.NewWebhookBuilder().
+		Name(webhookName).
+		Mutating().
+		Operations(admissionregistrationv1beta1.Create).
+		WithManager(mgr).
+		ForType(&corev1.Pod{}).
+		Handlers(&Handler{}).
+		FailurePolicy(admissionregistrationv1beta1.Fail).
+		NamespaceSelector(&metav1.LabelSelector{MatchLabels: map[string]string{"multicluster-service-account": "enabled"}}).
+		Build()
+}
 
 // Handler handles pod admission requests, mutating pods that request service account imports.
 // It is implemented by the service-account-import-admission-controller command, via controller-runtime.
