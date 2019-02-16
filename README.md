@@ -26,7 +26,7 @@ CLUSTER2=cluster2 # change me
 Install multicluster-service-account in cluster1:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.2.1
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.3.0
 MANIFEST_URL=$RELEASE_URL/install.yaml
 kubectl apply -f $MANIFEST_URL --context $CLUSTER1
 ```
@@ -52,6 +52,7 @@ The `multicluster-client` example includes:
   - a service account named `pod-lister` in the default namespace, bound to a role that can only list pods in its namespace;
   - a dummy NGINX deployment (to have pods to list);
 - in cluster1:
+  - a new label on the `default` namespace, `multicluster-service-account=enabled`, to instruct multicluster-service-account to automount service account import secrets inside annotated pods;
   - a service account import named `cluster2-default-pod-lister`, importing `pod-lister` from the default namespace of cluster2;
   - a `multicluster-client` job, whose pod is annotated to automount `cluster2-default-pod-lister`'s secret—it will list the pods in the default namespace of cluster2, and stop without restarting (we'll check the logs).
 
@@ -64,6 +65,7 @@ kubectl create rolebinding pod-lister --role=pod-lister \
 kubectl run nginx --image nginx
 
 kubectl config use-context $CLUSTER1
+kubectl label namespace default multicluster-service-account=enabled
 cat <<EOF | kubectl create -f -
 apiVersion: multicluster.admiralty.io/v1alpha1
 kind: ServiceAccountImport
@@ -134,7 +136,7 @@ spec:
 
 ## Annotations
 
-The `multicluster.admiralty.io/service-account-import.name` annotation on a pod (or pod template) tells the service account import admission controller to automount the corresponding secrets inside it. If a pod needs several service account imports, separate their names with commas, e.g.:
+In namespaces labeled with `multicluster-service-account=enabled`, the `multicluster.admiralty.io/service-account-import.name` annotation on a pod (or pod template) tells the service account import admission controller to automount the corresponding secrets inside it. If a pod needs several service account imports, separate their names with commas, e.g.:
 
 ```yaml
 apiVersion: v1
