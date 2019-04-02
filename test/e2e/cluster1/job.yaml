@@ -12,3 +12,5 @@ spec:
       containers:
       - name: multicluster-client
         image: quay.io/admiralty/multicluster-service-account-example-multicluster-client
+        securityContext:
+          runAsUser: 1000

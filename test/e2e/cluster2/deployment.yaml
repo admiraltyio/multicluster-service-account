@@ -15,4 +15,6 @@ spec:
       - name: nginx
         image: nginx
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        securityContext:
+          runAsUser: 1000
