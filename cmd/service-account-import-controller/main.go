@@ -22,7 +22,6 @@ import (
 	"admiralty.io/multicluster-service-account/pkg/apis"
 	"admiralty.io/multicluster-service-account/pkg/config"
 	"admiralty.io/multicluster-service-account/pkg/importer"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/sample-controller/pkg/signals"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )

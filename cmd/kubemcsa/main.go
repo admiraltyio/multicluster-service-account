@@ -19,7 +19,7 @@ package main
 import (
 	"admiralty.io/multicluster-service-account/pkg/bootstrap"
 	"gopkg.in/alecthomas/kingpin.v2"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 var (
@@ -29,7 +29,7 @@ var (
 )
 
 func main() {
-	kingpin.Version("0.3.0")
+	kingpin.Version("0.3.1")
 	kingpin.CommandLine.HelpFlag.Short('h')
 	switch kingpin.Parse() {
 	case "bootstrap":
