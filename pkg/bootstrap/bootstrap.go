@@ -24,6 +24,7 @@ import (
 	"admiralty.io/multicluster-service-account/pkg/apis"
 	"admiralty.io/multicluster-service-account/pkg/apis/multicluster/v1alpha1"
 	"admiralty.io/multicluster-service-account/pkg/config"
+	"admiralty.io/multicluster-service-account/pkg/importer"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -33,7 +34,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 var namespace = "multicluster-service-account"
@@ -201,19 +201,7 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		fmt.Printf("created service account import \"%s\" in namespace \"%s\" in target cluster \"%s\"\n", sai.Name, sai.Namespace, dstCtx)
 	}
 
-	// TODO: reuse code in importer
-	saiSecret := &corev1.Secret{}
-	saiSecret.Namespace = namespace
-	saiSecret.GenerateName = srcCtx + "-token-"
-	saiSecret.Data = saSecret.Data
-	saiSecret.Data["server"] = []byte(srcCfg.Host)
-	if err := controllerutil.SetControllerReference(sai, saiSecret, scheme.Scheme); err != nil {
-		return err
-	}
-	saiSecret.Labels = map[string]string{
-		"multicluster.admiralty.io/service-account-import.name": sai.Name,
-		"multicluster.admiralty.io/remote-secret.uid":           string(saSecret.UID),
-	}
+	saiSecret := importer.MakeServiceAccountImportSecret(sai, srcCfg.Host, saSecret, scheme.Scheme)
 	saiSecret, err = dstClientset.CoreV1().Secrets(saiSecret.Namespace).Create(saiSecret)
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return fmt.Errorf("cannot create secret \"%s\" in namespace \"%s\" in target cluster \"%s\": %v", saiSecret.GenerateName, saiSecret.Namespace, dstCtx, err)

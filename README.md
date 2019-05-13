@@ -1,6 +1,8 @@
 # Multicluster-Service-Account
 
-Multicluster-service-account makes it easy to use Kubernetes service accounts as multicluster identities. It imports and automounts remote service account tokens inside pods, for them to call the Kubernetes APIs of other clusters. Multicluster-service-account works well with [multicluster-controller](https://github.com/admiraltyio/multicluster-controller), but any cross-cluster Kubernetes client can benefit from it.
+Multicluster-service-account makes it easy for pods in a cluster to call the Kubernetes APIs of other clusters. It imports remote service account tokens into local secrets, as [kubeconfig](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/) files, and automounts them inside annotated pods.
+
+Multicluster-service-account can be used to run any Kubernetes client from another cluster. It can also be used to build operators that control Kubernetes resources across multiple clusters, e.g., with [multicluster-controller](https://github.com/admiraltyio/multicluster-controller).
 
 Why? Check out [Admiralty's blog post introducing multicluster-service-account](https://admiralty.io/blog/introducing-multicluster-service-account).
 
@@ -8,13 +10,48 @@ Why? Check out [Admiralty's blog post introducing multicluster-service-account](
 
 Multicluster-service-account consists of:
 
-1. a ServiceAccountImport custom resource definition (CRD) and controller to **import remote service accounts** (and their secrets);
-1. a dynamic admission webhook to **automount service account import secrets inside annotated pods**, the same way regular service accounts are automounted inside pods;
-1. helper methods to **generate client-go configurations from service account imports** (as well as generic methods to fall back to kubeconfig contexts and regular service accounts).
+1. A binary, `kubemcsa`, to bootstrap clusters, allowing them to import service account secrets from one another;
+    - After [installing](#step-1-installation) multicluster-service-account in cluster1 (associated with the `cluster1` context in the installer's kubeconfig), allowing cluster1 to import service account secrets from cluster2 is as simple as running
+        ```sh
+        kubemcsa bootstrap cluster1 cluster2
+        ```
+1. a ServiceAccountImport custom resource definition (CRD) and controller to import remote service account secrets as kubeconfig files;
+    - Here is a sample service account import object:
+        ```yaml
+        apiVersion: multicluster.admiralty.io/v1alpha1
+        kind: ServiceAccountImport
+        metadata:
+          name: cluster2-default-pod-lister
+        spec:
+          clusterName: cluster2
+          namespace: default # source and target namespaces can be different
+          name: pod-lister
+        ```
+    - which would generate a secret like this:
+        ```yaml
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: cluster2-default-pod-lister-token-6456p
+          ... # owner reference, etc.
+        type: Opaque
+        data:
+          config: ... # serialized kubeconfig
+        ```
+1. a dynamic admission webhook to automount service account import secrets inside annotated pods, the same way regular service accounts are automounted inside Pods;
+    - To automount the sample kubeconfig from above inside a pod, you would annotate the pod with
+        ```
+        multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister
+        ```
+        The pod and service account import must be in the same namespace. To mount multiple service account imports inside a single pod, append their names to the annotation, separated by commas.
+    - The sample kubeconfig would be mounted at `/var/run/secrets/admiralty.io/serviceaccountimports/cluster2-default-pod-lister/config`. Most Kubernetes clients accept a `--kubeconfig` option or a `KUBECONFIG` environment variable, which you would set to that path.
+1. **(optional)** Go helper functions (in the `pkg/config` package) to list and load mounted service account imports.
+
+Note: Before v0.4.0, service account import secrets used a custom format (like regular service account secrets, with an additional "server" field to locate the remote cluster's Kubernetes API). Clients were required to use custom code, e.g., the provided Go helper functions, to load the secrets as REST configs. v0.4.0 leverages the standard kubeconfig format to make it even easier to use multicluster-service-account, without any code change, with clients written in any language.
 
 ## Getting Started
 
-We assume that you are a cluster admin on two clusters, associated with, e.g., the contexts "cluster1" and "cluster2" in your kubeconfig. We're going to install multicluster-service-account and run a multicluster client example in cluster1, listing pods in cluster2.
+We assume that you are a cluster admin on two clusters, associated with, e.g., the contexts "cluster1" and "cluster2" in your kubeconfig. We're going to install multicluster-service-account and run a multi-cluster client example in cluster1, listing pods in cluster2.
 
 ```bash
 CLUSTER1=cluster1 # change me
@@ -26,7 +63,7 @@ CLUSTER2=cluster2 # change me
 Install multicluster-service-account in cluster1:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.3.1
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.4.0
 MANIFEST_URL=$RELEASE_URL/install.yaml
 kubectl apply -f $MANIFEST_URL --context $CLUSTER1
 ```
@@ -95,9 +132,9 @@ EOF
 
 In cluster1, check that:
 
-1. The service account import controller created a secret for the `cluster2-default-pod-lister` service account import, containing the token and namespace of the remote service account, and the URL and root certificate of the remote Kubernetes API:
+1. The service account import controller created a secret for the `cluster2-default-pod-lister` service account import, containing a kubeconfig file populated with the token and namespace of the remote service account, and the URL and root certificate of the remote Kubernetes API:
     ```bash
-    kubectl get secret -l multicluster.admiralty.io/service-account-import.name=$CLUSTER2-default-pod-lister -o yaml
+    kubectl get secret -l multicluster.admiralty.io/service-account-import.name=$CLUSTER2-default-pod-lister -o jsonpath={.items[0].data.config} | base64 -D
     # the data is base64-encoded
     ```
 1. The service account import secret was mounted inside the `multicluster-client` pod by the service account import admission controller:
@@ -112,7 +149,7 @@ In cluster1, check that:
 
 ## Service Account Imports
 
-Service account imports tell the service account import controller to maintain a secret in the same namespace, containing the remote service account's namespace and token, as well as the URL and root certificate of the remote Kubernetes API, which are all necessary data to configure a Kubernetes client. If a pod needs to call several clusters, it will use several service account imports, e.g.:
+Service account imports tell the service account import controller to maintain a secret in the same namespace, containing the remote service account's namespace and token, as well as the URL and root certificate of the remote Kubernetes API, which are all necessary data to configure a Kubernetes client. The secret is formatted as a standard [kubeconfig](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/) file, which most Kubernetes clients can understand. If a pod needs to call several clusters, it will use several service account imports, e.g.:
 
 ```yaml
 apiVersion: multicluster.admiralty.io/v1alpha1
@@ -151,7 +188,7 @@ spec:
 
 Note: just like with local service accounts, there is a race condition if a service account import and a pod requesting it are created at the same time: the service account import admission controller will likely reject the pod because the secret to automount won't be ready. Luckily, if the pod is controlled by another object, such as a deployment, job, etc., pod creation will be retried.
 
-## Client Configuration
+## (Optional) Client Configuration
 
 Multicluster-service-account includes a Go library (cf. [`pkg/config`](pkg/config)) to facilitate the creation of [client-go `rest.Config`](https://godoc.org/k8s.io/client-go/rest#Config) instances from service account imports. From there, you can create [`kubernetes.Clientset`](https://godoc.org/k8s.io/client-go/kubernetes#NewForConfig) instances as usual. The namespaces of the remote service accounts are also provided:
 
@@ -193,7 +230,7 @@ cfg, ns, err := ConfigAndNamespace()
 all, err := AllNamedConfigsAndNamespaces()
 ```
 
-The service account import controller uses `AllNamedConfigsAndNamespaces()` internally. That's how we were able to bootstrap in the getting started guide: the same binary was used with a kubeconfig out-of-cluster and with service account imports in-cluster. The [generic client example](examples/generic-client/) uses `ConfigAndNamespace()`.
+The service account import controller uses `AllNamedConfigsAndNamespaces()` internally. The [generic client example](examples/generic-client/) uses `ConfigAndNamespace()`.
 
 ## API Reference
 

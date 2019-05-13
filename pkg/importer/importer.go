@@ -37,6 +37,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 var ctrlName = "service-account-import-controller"
@@ -238,29 +241,50 @@ func (r *reconciler) makeSecrets(sai *v1alpha1.ServiceAccountImport) ([]*corev1.
 			return nil, fmt.Errorf("cannot get remote ServiceAccount token Secret: %v", err)
 		}
 
-		ds := &corev1.Secret{}
-		ds.Namespace = sai.Namespace
-		ds.GenerateName = sai.Name + "-token-"
-		if err := controllerutil.SetControllerReference(sai, ds, r.destScheme); err != nil {
-			return nil, fmt.Errorf("cannot set controller reference on destClient token Secret: %v", err)
-		}
-		ds.Data = s.Data
-
-		// Note: we can't use StringData because ds is to be compared with the observation (StringData is for writes only)
-		url := r.srcURLs[clusterName]
-		if ds.Data == nil { // very unlikely (the remote secret should have data), but just in case...
-			ds.Data = map[string][]byte{"server": []byte(url)}
-		} else {
-			ds.Data["server"] = []byte(url)
-		}
-
-		ds.Labels = map[string]string{
-			saiName:         string(sai.Name),
-			remoteSecretUID: string(s.UID),
-		}
-
+		ds := MakeServiceAccountImportSecret(sai, r.srcURLs[clusterName], s, r.destScheme)
 		dss = append(dss, ds)
 	}
 
 	return dss, nil
+}
+
+func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server string, saSecret *corev1.Secret, scheme *runtime.Scheme) *corev1.Secret {
+	s := &corev1.Secret{}
+
+	s.Namespace = sai.Namespace
+	s.GenerateName = sai.Name + "-token-"
+
+	utilruntime.Must(controllerutil.SetControllerReference(sai, s, scheme))
+	// should not fail as long as scheme knows about types
+
+	kubeconfig, err := clientcmd.Write(clientcmdapi.Config{
+		CurrentContext: sai.Name,
+		Contexts: map[string]*clientcmdapi.Context{
+			sai.Name: &clientcmdapi.Context{
+				Namespace: string(saSecret.Data["namespace"]),
+				Cluster:   sai.Name,
+				AuthInfo:  sai.Name,
+			},
+		},
+		Clusters: map[string]*clientcmdapi.Cluster{
+			sai.Name: &clientcmdapi.Cluster{
+				Server:                   server,
+				CertificateAuthorityData: saSecret.Data["ca.crt"],
+			},
+		},
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{
+			sai.Name: &clientcmdapi.AuthInfo{
+				Token: string(saSecret.Data["token"]),
+			},
+		},
+	})
+	utilruntime.Must(err) // encoding errors should not happen
+	s.Data = map[string][]byte{"config": kubeconfig}
+
+	s.Labels = map[string]string{
+		saiName:         string(sai.Name),
+		remoteSecretUID: string(s.UID),
+	}
+
+	return s
 }

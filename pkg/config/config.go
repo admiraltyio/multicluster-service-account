@@ -18,14 +18,11 @@ package config // import "admiralty.io/multicluster-service-account/pkg/config"
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
-	"github.com/golang/glog"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/client-go/util/cert"
 )
 
 var saiDir = "/var/run/secrets/admiralty.io/serviceaccountimports/"
@@ -130,10 +127,11 @@ func AllServiceAccountImportConfigsAndNamespaces() (map[string]ConfigAndNamespac
 // ServiceAccountImportConfigLoader partially implements client-go/tools/clientcmd.ClientConfig,
 // to integrate with that package's general-purpose config loading logic.
 type ServiceAccountImportConfigLoader struct {
-	Name      string
-	config    *rest.Config
-	namespace string
+	Name    string
+	wrapped clientcmd.ClientConfig
 }
+
+var _ clientcmd.ClientConfig = (*ServiceAccountImportConfigLoader)(nil)
 
 func NewServiceAccountImportConfigLoader() (*ServiceAccountImportConfigLoader, error) {
 	n, err := SingleServiceAccountImportName()
@@ -217,54 +215,50 @@ func ServiceAccountImportMounted(name string) (bool, error) {
 	return true, nil
 }
 
+func (l *ServiceAccountImportConfigLoader) wrap() error {
+	if l.wrapped != nil {
+		return nil
+	}
+
+	raw, err := clientcmd.LoadFromFile(saiDir + l.Name + "/config")
+	if err != nil {
+		return err
+	}
+
+	l.wrapped = clientcmd.NewDefaultClientConfig(*raw, &clientcmd.ConfigOverrides{})
+	return nil
+}
+
 func (l *ServiceAccountImportConfigLoader) ClientConfig() (*rest.Config, error) {
-	if l.config != nil {
-		return l.config, nil
-	}
-
-	basePath := saiDir + l.Name
-	server, err := ioutil.ReadFile(basePath + "/server")
-	if err != nil {
+	if err := l.wrap(); err != nil {
 		return nil, err
 	}
-	token, err := ioutil.ReadFile(basePath + "/token")
-	if err != nil {
-		return nil, err
-	}
-	tlsClientConfig := rest.TLSClientConfig{}
-	rootCAFile := basePath + "/ca.crt"
-	if _, err := cert.NewPool(rootCAFile); err != nil {
-		glog.Errorf("Expected to load root CA config from %s, but got err: %v", rootCAFile, err)
-	} else {
-		tlsClientConfig.CAFile = rootCAFile
-	}
 
-	return &rest.Config{
-		Host:            string(server),
-		BearerToken:     string(token),
-		TLSClientConfig: tlsClientConfig,
-	}, nil
+	return l.wrapped.ClientConfig()
 }
 
 func (l *ServiceAccountImportConfigLoader) Namespace() (string, bool, error) {
-	if l.namespace != "" {
-		return l.namespace, false, nil
-	}
-
-	basePath := saiDir + l.Name
-	ns, err := ioutil.ReadFile(basePath + "/namespace")
-	if err != nil {
+	if err := l.wrap(); err != nil {
 		return "", false, err
 	}
-	return string(ns), false, nil
+
+	return l.wrapped.Namespace()
 }
 
 func (l *ServiceAccountImportConfigLoader) RawConfig() (clientcmdapi.Config, error) {
-	panic("not implemented")
+	if err := l.wrap(); err != nil {
+		return clientcmdapi.Config{}, err
+	}
+
+	return l.wrapped.RawConfig()
 }
 
 func (l *ServiceAccountImportConfigLoader) ConfigAccess() clientcmd.ConfigAccess {
-	panic("not implemented")
+	if err := l.wrap(); err != nil {
+		return nil
+	}
+
+	return l.wrapped.ConfigAccess()
 }
 
 func (l *ServiceAccountImportConfigLoader) ConfigAndNamespace() (*rest.Config, string, error) {
