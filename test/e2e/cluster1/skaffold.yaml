@@ -2,16 +2,6 @@ apiVersion: skaffold/v1alpha2
 kind: Config
 build:
   artifacts:
-  - imageName: quay.io/admiralty/service-account-import-controller
-    workspace: _out
-    docker:
-      buildArgs:
-        target: cmd/service-account-import-controller
-  - imageName: quay.io/admiralty/service-account-import-admission-controller
-    workspace: _out
-    docker:
-      buildArgs:
-        target: cmd/service-account-import-admission-controller
   - imageName: quay.io/admiralty/multicluster-service-account-example-multicluster-client
     workspace: _out
     docker:
@@ -19,4 +9,4 @@ build:
         target: examples/multicluster-client
 deploy:
   kustomize:
-    kustomizePath: config/install/
+    kustomizePath: test/e2e/cluster1/
