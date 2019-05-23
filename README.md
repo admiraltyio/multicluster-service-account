@@ -39,15 +39,11 @@ Multicluster-service-account consists of:
           config: ... # serialized kubeconfig
         ```
 1. a dynamic admission webhook to automount service account import secrets inside annotated pods, the same way regular service accounts are automounted inside Pods;
-    - To automount the sample kubeconfig from above inside a pod, you would annotate the pod with
-        ```
-        multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister
-        ```
-        The pod and service account import must be in the same namespace. To mount multiple service account imports inside a single pod, append their names to the annotation, separated by commas.
+    - To automount the sample kubeconfig from above inside a pod, you would annotate the pod with `multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister`. The pod and service account import must be in the same namespace. To mount multiple service account imports inside a single pod, append their names to the annotation, separated by commas.
     - The sample kubeconfig would be mounted at `/var/run/secrets/admiralty.io/serviceaccountimports/cluster2-default-pod-lister/config`. Most Kubernetes clients accept a `--kubeconfig` option or a `KUBECONFIG` environment variable, which you would set to that path.
 1. **(optional)** Go helper functions (in the `pkg/config` package) to list and load mounted service account imports.
 
-Note: Before v0.4.0, service account import secrets used a custom format (like regular service account secrets, with an additional "server" field to locate the remote cluster's Kubernetes API). Clients were required to use custom code, e.g., the provided Go helper functions, to load the secrets as REST configs. v0.4.0 leverages the standard kubeconfig format to make it even easier to use multicluster-service-account, without any code change, with clients written in any language.
+Note: Before v0.4.0, service account import secrets used a custom format (like regular service account secrets, with an additional "server" field to locate the remote cluster's Kubernetes API). Clients were required to use custom code, e.g., the provided Go helper functions, to load the secrets as REST configs. v0.4.0+ leverages the standard kubeconfig format to make it even easier to use multicluster-service-account, without any code change, with clients written in any language.
 
 ## Getting Started
 
@@ -63,7 +59,7 @@ CLUSTER2=cluster2 # change me
 Install multicluster-service-account in cluster1:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.4.0
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.4.1
 MANIFEST_URL=$RELEASE_URL/install.yaml
 kubectl apply -f $MANIFEST_URL --context $CLUSTER1
 ```

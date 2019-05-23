@@ -29,7 +29,7 @@ var (
 )
 
 func main() {
-	kingpin.Version("0.4.0")
+	kingpin.Version("0.4.1")
 	kingpin.CommandLine.HelpFlag.Short('h')
 	switch kingpin.Parse() {
 	case "bootstrap":
