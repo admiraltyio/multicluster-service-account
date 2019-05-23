@@ -37,6 +37,7 @@ import (
 )
 
 var namespace = "multicluster-service-account"
+var deployName = "service-account-import-controller"
 var clusterRoleName = "service-account-import-controller-remote"
 
 // TODO: allow cluster name overrides and/or get cluster names from kubeconfig instead of using context names
@@ -222,8 +223,22 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		return fmt.Errorf("timeout: %v", err)
 	}
 
-	patch := []byte(fmt.Sprintf("{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"multicluster.admiralty.io/service-account-import.name\":\"%s\"}}}}}", sai.Name))
-	_, err = dstClientset.AppsV1().Deployments(namespace).Patch("service-account-import-controller", types.StrategicMergePatchType, patch)
+	deploy, err := dstClientset.AppsV1().Deployments(namespace).Get(deployName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("cannot get deployment \"%s\" in namespace \"%s\" in target cluster \"%s\": %v", deployName, namespace, dstCtx, err)
+	}
+	imports, _ := deploy.Spec.Template.Annotations[importer.AnnotationKeyServiceAccountImportName]
+	if imports != "" {
+		imports += ","
+	}
+	imports += sai.Name
+	deployCopy := deploy.DeepCopy()
+	if deployCopy.Spec.Template.Annotations == nil {
+		deployCopy.Spec.Template.Annotations = map[string]string{importer.AnnotationKeyServiceAccountImportName: imports}
+	} else {
+		deployCopy.Spec.Template.Annotations[importer.AnnotationKeyServiceAccountImportName] = imports
+	}
+	_, err = dstClientset.AppsV1().Deployments(namespace).Update(deployCopy)
 	if err != nil {
 		return fmt.Errorf("cannot annotate service account import controller in target cluster \"%s\": %v", dstCtx, err)
 	}

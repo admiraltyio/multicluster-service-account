@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"admiralty.io/multicluster-service-account/pkg/apis/multicluster/v1alpha1"
+	"admiralty.io/multicluster-service-account/pkg/importer"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -40,8 +41,7 @@ import (
 )
 
 var (
-	AnnotationKeyServiceAccountImportName = "multicluster.admiralty.io/service-account-import.name"
-	webhookName                           = "service-account-import-admission-controller.multicluster.admiralty.io"
+	webhookName = "service-account-import-admission-controller.multicluster.admiralty.io"
 )
 
 // +kubebuilder:webhook:port=9876,cert-dir=/tmp/cert
@@ -170,7 +170,7 @@ func getNamespace(pod *corev1.Pod, req *admissionv1beta1.AdmissionRequest) strin
 }
 
 func (h *Handler) mutatePodsFn(ctx context.Context, req atypes.Request, pod *corev1.Pod) error {
-	saiNamesStr, ok := pod.Annotations[AnnotationKeyServiceAccountImportName]
+	saiNamesStr, ok := pod.Annotations[importer.AnnotationKeyServiceAccountImportName]
 	if !ok {
 		return nil
 	}

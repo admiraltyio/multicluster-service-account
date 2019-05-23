@@ -43,7 +43,7 @@ import (
 )
 
 var ctrlName = "service-account-import-controller"
-var saiName = "multicluster.admiralty.io/service-account-import.name"
+var AnnotationKeyServiceAccountImportName = "multicluster.admiralty.io/service-account-import.name"
 var remoteSecretUID = "multicluster.admiralty.io/remote-secret.uid"
 
 // Add creates a service account import controller and adds it to a manager (mgr).
@@ -130,7 +130,7 @@ func (r *reconciler) Reconcile(req reconcile.Request) (reconcile.Result, error) 
 	osl := &corev1.SecretList{}
 	log.Printf("list Secrets")
 	if err := r.destClient.List(context.TODO(), client.InNamespace(sai.Namespace).MatchingLabels(map[string]string{
-		saiName: string(sai.Name)}), osl); err != nil {
+		AnnotationKeyServiceAccountImportName: string(sai.Name)}), osl); err != nil {
 		return reconcile.Result{}, fmt.Errorf("cannot list token Secrets: %v", err)
 	}
 
@@ -282,7 +282,7 @@ func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server s
 	s.Data = map[string][]byte{"config": kubeconfig}
 
 	s.Labels = map[string]string{
-		saiName:         string(sai.Name),
+		AnnotationKeyServiceAccountImportName:         string(sai.Name),
 		remoteSecretUID: string(s.UID),
 	}
 
