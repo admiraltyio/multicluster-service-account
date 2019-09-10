@@ -28,7 +28,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -37,9 +40,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 var ctrlName = "service-account-import-controller"
@@ -279,11 +279,11 @@ func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server s
 		},
 	})
 	utilruntime.Must(err) // encoding errors should not happen
-	s.Data = map[string][]byte{"config": kubeconfig}
+	s.Data = map[string][]byte{"config": kubeconfig, "token": saSecret.Data["token"]}
 
 	s.Labels = map[string]string{
-		AnnotationKeyServiceAccountImportName:         string(sai.Name),
-		remoteSecretUID: string(s.UID),
+		AnnotationKeyServiceAccountImportName: string(sai.Name),
+		remoteSecretUID:                       string(s.UID),
 	}
 
 	return s
