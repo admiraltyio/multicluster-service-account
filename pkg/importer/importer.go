@@ -279,7 +279,14 @@ func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server s
 		},
 	})
 	utilruntime.Must(err) // encoding errors should not happen
-	s.Data = map[string][]byte{"config": kubeconfig, "token": saSecret.Data["token"]}
+	s.Data = make(map[string][]byte, len(saSecret.Data) + 1)
+	for k, v := range saSecret.Data {
+		s.Data[k] = v
+	} // includes ca.crt, namespace, and token
+	s.Data["server"] = []byte(server)
+	// that should be enough information to call a remote Kubernetes API,
+	// but let's add the standard kubeconfig as a convenience
+	s.Data["config"] = kubeconfig
 
 	s.Labels = map[string]string{
 		AnnotationKeyServiceAccountImportName: string(sai.Name),
