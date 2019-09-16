@@ -25,15 +25,17 @@ import (
 var (
 	bootstrapCmd = kingpin.Command("bootstrap", "Allow service account import controller in a cluster to import service accounts from another cluster.")
 	dstCtx       = bootstrapCmd.Arg("target", "(default: current context) kubeconfig context corresponding to the cluster INTO which you want to import service accounts").Required().String()
+	dstK8SConfig = bootstrapCmd.Flag("target-kubeconfig", "(default: current kubeconfig file) kubeconfig file to use for target cluster").ExistingFile()
 	srcCtx       = bootstrapCmd.Arg("source", "kubeconfig context corresponding to the cluster FROM which you want to import service accounts").Required().String()
+	srcK8SConfig = bootstrapCmd.Flag("source-kubeconfig", "(default: current kubeconfig file) kubeconfig file to use for source cluster").ExistingFile()
 )
 
 func main() {
-	kingpin.Version("0.4.1")
+	kingpin.Version("0.5.0")
 	kingpin.CommandLine.HelpFlag.Short('h')
 	switch kingpin.Parse() {
 	case "bootstrap":
-		err := bootstrap.Bootstrap(*srcCtx, *dstCtx)
+		err := bootstrap.Bootstrap(*srcCtx, *srcK8SConfig, *dstCtx, *dstK8SConfig)
 		if err != nil {
 			kingpin.Fatalf("cannot bootstrap: %v", err)
 		}

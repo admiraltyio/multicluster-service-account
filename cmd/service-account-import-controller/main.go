@@ -27,7 +27,7 @@ import (
 )
 
 func main() {
-	cfg, _, err := config.ConfigAndNamespaceForContext("")
+	cfg, _, err := config.ConfigAndNamespaceForContext("", "")
 	// here, we just want to make sure we DON'T use a service account import,
 	// which, if there is only one, would be loaded by config.ConfigAndNamespace()
 	// TODO: create function with better name or use client-go directly

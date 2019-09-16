@@ -40,10 +40,9 @@ var namespace = "multicluster-service-account"
 var deployName = "service-account-import-controller"
 var clusterRoleName = "service-account-import-controller-remote"
 
-// TODO: allow cluster name overrides and/or get cluster names from kubeconfig instead of using context names
+func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
+	srcCfg, _, err := config.NamedConfigAndNamespace(srcKubeconfig, srcCtx)
 
-func Bootstrap(srcCtx string, dstCtx string) error {
-	srcCfg, _, err := config.NamedConfigAndNamespace(srcCtx)
 	if err != nil {
 		return err
 	}
@@ -56,7 +55,7 @@ func Bootstrap(srcCtx string, dstCtx string) error {
 		return err
 	}
 
-	dstCfg, _, err := config.NamedConfigAndNamespace(dstCtx)
+	dstCfg, _, err := config.NamedConfigAndNamespace(dstKubeconfig, dstCtx)
 	if err != nil {
 		return err
 	}
