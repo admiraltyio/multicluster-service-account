@@ -23,7 +23,6 @@ import (
 
 	"admiralty.io/multicluster-service-account/pkg/apis"
 	"admiralty.io/multicluster-service-account/pkg/apis/multicluster/v1alpha1"
-	"admiralty.io/multicluster-service-account/pkg/config"
 	"admiralty.io/multicluster-service-account/pkg/importer"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -33,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -41,7 +41,10 @@ var deployName = "service-account-import-controller"
 var clusterRoleName = "service-account-import-controller-remote"
 
 func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
-	srcCfg, _, err := config.NamedConfigAndNamespace(srcKubeconfig, srcCtx)
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	rules.ExplicitPath = srcKubeconfig                              // if empty, env var or default path will be used instead
+	overrides := &clientcmd.ConfigOverrides{CurrentContext: srcCtx} // if srcCtx is empty, kubeconfig's current context will be used instead
+	srcCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides).ClientConfig()
 
 	if err != nil {
 		return err
@@ -55,7 +58,11 @@ func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
 		return err
 	}
 
-	dstCfg, _, err := config.NamedConfigAndNamespace(dstKubeconfig, dstCtx)
+	rules = clientcmd.NewDefaultClientConfigLoadingRules()
+	rules.ExplicitPath = dstKubeconfig                             // if empty, env var or default path will be used instead
+	overrides = &clientcmd.ConfigOverrides{CurrentContext: dstCtx} // if dstCtx is empty, kubeconfig's current context will be used instead
+	dstCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides).ClientConfig()
+
 	if err != nil {
 		return err
 	}

@@ -32,23 +32,19 @@ var saiDir = "/var/run/secrets/admiralty.io/serviceaccountimports/"
 // is mounted, ConfigAndNamespace falls back to the current kubeconfig context or the regular
 // service account.
 func ConfigAndNamespace() (*rest.Config, string, error) {
-	return NamedConfigAndNamespace("", "")
+	return NamedConfigAndNamespace("")
 }
 
 // NamedConfigAndNamespace returns a rest.Config and namespace from a mounted service account import
 // whose name is given as an argument. It no mounted service account import matches that name,
 // NamedConfigAndNamespace attempts to fall back to an eponymous kubeconfig context. Otherwise,
 // an error is returned.
-func NamedConfigAndNamespace(kubeconfigFile string, name string) (*rest.Config, string, error) {
-	if kubeconfigFile != "" {
-		fmt.Printf("using kubeconfig file %v to connect to cluster\n", kubeconfigFile)
-	} else {
-		cfg, ns, err := NamedServiceAccountImportConfigAndNamespace(name)
-		if err == nil {
-			return cfg, ns, nil
-		}
+func NamedConfigAndNamespace(name string) (*rest.Config, string, error) {
+	cfg, ns, err := NamedServiceAccountImportConfigAndNamespace(name)
+	if err == nil {
+		return cfg, ns, nil
 	}
-	return ConfigAndNamespaceForContext(kubeconfigFile, name)
+	return ConfigAndNamespaceForContext(name)
 }
 
 // AllNamedConfigsAndNamespaces returns a map of rest.Configs and namespaces corresponding to
@@ -68,7 +64,7 @@ func AllNamedConfigsAndNamespaces() (map[string]ConfigAndNamespaceTuple, error) 
 		return nil, err
 	}
 	for ctx := range raw.Contexts { // loop over context names, disregard content and reload with name as override
-		cfg, ns, err := ConfigAndNamespaceForContext("", ctx)
+		cfg, ns, err := ConfigAndNamespaceForContext(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -79,18 +75,10 @@ func AllNamedConfigsAndNamespaces() (map[string]ConfigAndNamespaceTuple, error) 
 
 // ConfigAndNamespaceForContext returns a rest.Config and namespace from a kubeconfig context
 // whose name is given as an argument. It it doesn't exist, an error is returned.
-func ConfigAndNamespaceForContext(kubeconfigFile string, context string) (*rest.Config, string, error) {
-	var loader clientcmd.ClientConfig
+func ConfigAndNamespaceForContext(context string) (*rest.Config, string, error) {
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	overrides := &clientcmd.ConfigOverrides{CurrentContext: context}
-
-	if kubeconfigFile != "" {
-		loader = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-			&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigFile},
-			overrides)
-	} else {
-		rules := clientcmd.NewDefaultClientConfigLoadingRules()
-		loader = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
-	}
+	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
 	return configAndNamespace(loader)
 }
 
