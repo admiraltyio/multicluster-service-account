@@ -1,3 +1,4 @@
+---
 apiVersion: multicluster.admiralty.io/v1alpha1
 kind: ServiceAccountImport
 metadata:

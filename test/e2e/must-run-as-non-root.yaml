@@ -1,3 +1,4 @@
+---
 apiVersion: extensions/v1beta1
 kind: PodSecurityPolicy
 metadata:
@@ -12,7 +13,7 @@ spec:
   supplementalGroups:
     rule: RunAsAny
   volumes:
-  - '*'
+    - '*'
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -20,13 +21,13 @@ metadata:
   name: must-run-as-non-root
 rules:
 - apiGroups:
-  - extensions
+    - extensions
   resources:
-  - podsecuritypolicies
+    - podsecuritypolicies
   resourceNames:
-  - must-run-as-non-root
+    - must-run-as-non-root
   verbs:
-  - use
+    - use
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1

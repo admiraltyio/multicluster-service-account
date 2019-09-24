@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,9 +13,9 @@ spec:
         app: nginx
     spec:
       containers:
-      - name: nginx
-        image: nginx
-        ports:
-        - containerPort: 8080
-        securityContext:
-          runAsUser: 1000
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 8080
+          securityContext:
+            runAsUser: 1000

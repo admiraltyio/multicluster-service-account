@@ -1,9 +1,17 @@
 set -euo pipefail
 
-RELEASE="$1"
+VERSION="$1"
 
-sed "s/RELEASE/$RELEASE/g" release/kustomization.tmpl.yaml > release/kustomization.yaml
-kustomize build release/ -o _out/install.yaml
-# TODO: upload to GitHub
-RELEASE=$RELEASE skaffold build -f release/skaffold.yaml
+IMAGES=(
+  "service-account-import-admission-controller"
+  "service-account-import-controller"
+  "multicluster-service-account-example-generic-client"
+  "multicluster-service-account-example-multicluster-client"
+)
+
+for IMAGE in "${IMAGES[@]}"; do
+  docker push "quay.io/admiralty/$IMAGE:$VERSION"
+done
+
+# TODO: upload install.yaml and kubemcsa binaries to GitHub
 # TODO: also tag images with latest

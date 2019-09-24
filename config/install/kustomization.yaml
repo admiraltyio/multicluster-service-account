@@ -1,5 +1,0 @@
-resources:
-- namespace.yaml
-- automount.yaml
-- importer.yaml
-- ../crds/multicluster_v1alpha1_serviceaccountimport.yaml

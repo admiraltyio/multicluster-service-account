@@ -1,4 +1,4 @@
 set -euo pipefail
 
-kubectl config use-context cluster1 && skaffold delete -f test/e2e/install/skaffold.yaml
-kubectl --context cluster2 delete namespace multicluster-service-account # TODO? run kubemcsa unstrap when it exists
+KUBECONFIG=kubeconfig-cluster1 kubectl delete -f _out/install.yaml
+KUBECONFIG=kubeconfig-cluster2 kubectl delete namespace multicluster-service-account # TODO? run kubemcsa unstrap when it exists

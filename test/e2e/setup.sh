@@ -1,4 +1,20 @@
 set -euo pipefail
 
-kubectl config use-context cluster1 && skaffold run -f test/e2e/install/skaffold.yaml
-_out/kubemcsa-darwin-amd64 bootstrap cluster1 cluster2 # TODO: accept OS as parameter
+VERSION="$1"
+
+IMAGES=(
+  "service-account-import-admission-controller"
+  "service-account-import-controller"
+  "multicluster-service-account-example-multicluster-client"
+)
+
+for IMAGE in "${IMAGES[@]}"; do
+  kind load docker-image "quay.io/admiralty/$IMAGE:$VERSION" --name cluster1
+done
+KUBECONFIG=kubeconfig-cluster1 kubectl apply -f _out/install.yaml
+
+OS=linux
+kubemcsa="_out/kubemcsa-$OS-amd64"
+$kubemcsa bootstrap \
+  --target-kubeconfig kubeconfig-cluster1 \
+  --source-kubeconfig kubeconfig-cluster2

@@ -1,22 +1,23 @@
 set -euo pipefail
 
-kustomize build test/e2e/cluster2/ | kubectl --context cluster2 apply -f -
-kubectl --context cluster1 label ns default multicluster-service-account=enabled --overwrite
-kubectl config use-context cluster1 && skaffold run -f test/e2e/cluster1/skaffold.yaml
+VERSION="$1"
 
-POD_NAME_2=$(kubectl --context cluster2 get pod -o jsonpath={.items[0].metadata.name})
+KUBECONFIG=kubeconfig-cluster2 kubectl apply -f test/e2e/cluster2
+KUBECONFIG=kubeconfig-cluster1 kubectl label ns default multicluster-service-account=enabled --overwrite
+cat test/e2e/cluster1/*.yaml | sed "s/MY_VERSION/$VERSION/g" | KUBECONFIG=kubeconfig-cluster1 kubectl apply -f -
+
+POD_NAME_2=$(KUBECONFIG=kubeconfig-cluster2 kubectl get pod -o jsonpath='{.items[0].metadata.name}')
 echo "waiting for test job to complete..."
-kubectl --context cluster1 wait job/multicluster-client --for condition=complete
-POD_NAME_1=$(kubectl --context cluster1 logs job/multicluster-client | tail -1)
-if [ "$POD_NAME_1" == "$POD_NAME_2" ]
-then
-	echo "SUCCESS"
-	exit 0
+KUBECONFIG=kubeconfig-cluster1 kubectl wait job/multicluster-client --for condition=complete --timeout=60s
+POD_NAME_1=$(KUBECONFIG=kubeconfig-cluster1 kubectl logs job/multicluster-client | tail -1)
+if [ "$POD_NAME_1" == "$POD_NAME_2" ]; then
+  echo "SUCCESS"
+  exit 0
 else
-	echo "FAILURE"
-	exit 1
+  echo "FAILURE"
+  exit 1
 fi
 
-kubectl config use-context cluster1 && skaffold delete -f test/e2e/cluster1/skaffold.yaml
-kubectl --context cluster1 label ns default multicluster-service-account-
-kustomize build test/e2e/cluster2/ | kubectl --context cluster2 delete -f -
+cat test/e2e/cluster1/*.yaml | sed "s/MY_VERSION/$VERSION/g" | KUBECONFIG=kubeconfig-cluster1 kubectl delete -f -
+KUBECONFIG=kubeconfig-cluster1 kubectl label ns default multicluster-service-account-
+KUBECONFIG=kubeconfig-cluster2 kubectl delete -f test/e2e/cluster2
