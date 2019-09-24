@@ -44,11 +44,19 @@ func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	rules.ExplicitPath = srcKubeconfig                              // if empty, env var or default path will be used instead
 	overrides := &clientcmd.ConfigOverrides{CurrentContext: srcCtx} // if srcCtx is empty, kubeconfig's current context will be used instead
-	srcCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides).ClientConfig()
-
+	srcCfgLoader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+	srcCfg, err := srcCfgLoader.ClientConfig()
 	if err != nil {
 		return err
 	}
+	srcCfgRaw, err := srcCfgLoader.RawConfig()
+	if err != nil {
+		return err // TODO allow running bootstrap with in-cluster config
+	}
+	if srcCtx == "" {
+		srcCtx = srcCfgRaw.CurrentContext
+	}
+	srcClusterName := srcCfgRaw.Contexts[srcCtx].Cluster
 	// srcClient, err := client.New(srcCfg, client.Options{})
 	// if err != nil {
 	// 	return err
@@ -61,11 +69,19 @@ func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
 	rules = clientcmd.NewDefaultClientConfigLoadingRules()
 	rules.ExplicitPath = dstKubeconfig                             // if empty, env var or default path will be used instead
 	overrides = &clientcmd.ConfigOverrides{CurrentContext: dstCtx} // if dstCtx is empty, kubeconfig's current context will be used instead
-	dstCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides).ClientConfig()
-
+	dstCfgLoader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+	dstCfg, err := dstCfgLoader.ClientConfig()
 	if err != nil {
 		return err
 	}
+	dstCfgRaw, err := dstCfgLoader.RawConfig()
+	if err != nil {
+		return err // TODO allow running bootstrap with in-cluster config
+	}
+	if dstCtx == "" {
+		dstCtx = dstCfgRaw.CurrentContext
+	}
+	dstClusterName := dstCfgRaw.Contexts[dstCtx].Cluster
 	dstClientset, err := kubernetes.NewForConfig(dstCfg)
 	if err != nil {
 		return err
@@ -99,7 +115,7 @@ func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
 			Name: clusterRoleName,
 		},
 		Rules: []rbacv1.PolicyRule{
-			rbacv1.PolicyRule{
+			{
 				APIGroups: []string{""},
 				Resources: []string{"serviceaccounts", "secrets"},
 				Verbs:     []string{"get", "list", "watch"},
@@ -119,7 +135,7 @@ func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      dstCtx,
+			Name:      dstClusterName,
 		},
 	}
 	_, err = srcClientset.CoreV1().ServiceAccounts(namespace).Create(sa)
@@ -134,14 +150,14 @@ func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
 
 	crb := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: dstCtx,
+			Name: dstClusterName,
 		},
 		RoleRef: rbacv1.RoleRef{
 			Kind: "ClusterRole",
 			Name: clusterRoleName,
 		},
 		Subjects: []rbacv1.Subject{
-			rbacv1.Subject{
+			{
 				Kind:      "ServiceAccount",
 				Namespace: sa.Namespace,
 				Name:      sa.Name,
@@ -186,12 +202,12 @@ func Bootstrap(srcCtx, srcKubeconfig, dstCtx, dstKubeconfig string) error {
 	sai := &v1alpha1.ServiceAccountImport{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      srcCtx,
+			Name:      srcClusterName,
 		},
 		Spec: v1alpha1.ServiceAccountImportSpec{
-			ClusterName: srcCtx,
+			ClusterName: srcClusterName,
 			Namespace:   namespace,
-			Name:        dstCtx,
+			Name:        dstClusterName,
 		},
 	}
 	if err := dstClient.Create(context.TODO(), sai); err != nil {
