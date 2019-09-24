@@ -260,26 +260,26 @@ func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server s
 	kubeconfig, err := clientcmd.Write(clientcmdapi.Config{
 		CurrentContext: sai.Name,
 		Contexts: map[string]*clientcmdapi.Context{
-			sai.Name: &clientcmdapi.Context{
+			sai.Name: {
 				Namespace: string(saSecret.Data["namespace"]),
 				Cluster:   sai.Name,
 				AuthInfo:  sai.Name,
 			},
 		},
 		Clusters: map[string]*clientcmdapi.Cluster{
-			sai.Name: &clientcmdapi.Cluster{
+			sai.Name: {
 				Server:                   server,
 				CertificateAuthorityData: saSecret.Data["ca.crt"],
 			},
 		},
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			sai.Name: &clientcmdapi.AuthInfo{
+			sai.Name: {
 				Token: string(saSecret.Data["token"]),
 			},
 		},
 	})
 	utilruntime.Must(err) // encoding errors should not happen
-	s.Data = make(map[string][]byte, len(saSecret.Data) + 1)
+	s.Data = make(map[string][]byte, len(saSecret.Data)+2)
 	for k, v := range saSecret.Data {
 		s.Data[k] = v
 	} // includes ca.crt, namespace, and token
