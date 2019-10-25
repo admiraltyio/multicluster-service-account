@@ -67,7 +67,7 @@ CLUSTER2=cluster2 # change me
 Install multicluster-service-account in cluster1:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.5.0
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.5.1
 MANIFEST_URL=$RELEASE_URL/install.yaml
 kubectl apply -f $MANIFEST_URL --context $CLUSTER1
 ```
