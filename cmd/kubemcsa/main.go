@@ -18,6 +18,7 @@ package main
 
 import (
 	"admiralty.io/multicluster-service-account/pkg/bootstrap"
+	"fmt"
 	"gopkg.in/alecthomas/kingpin.v2"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
@@ -30,10 +31,23 @@ var (
 	srcCtx         = bootstrapCmd.Flag("source-context", "(default: current context) name of the kubeconfig context to use for the source cluster").String()
 	srcK8sConfig   = bootstrapCmd.Flag("source-kubeconfig", "(default: KUBECONFIG environment variable or ~/.kube/config) path to kubeconfig file to use for the source cluster").ExistingFile()
 	srcClusterName = bootstrapCmd.Flag("source-name", "(default: name of the kubeconfig cluster for the source context) a service account import with that name will be created in the target cluster (note: use this option if, e.g., the kubeconfig cluster name isn't a valid DNS-1123 subdomain)").String()
+
+	exportCmd = kingpin.Command("export", "Export a service account, i.e., format a template for a new secret from an existing service account secret, the address of its Kubernetes API server, and an equivalent kubeconfig for convenience."+
+		" Print YAML to stdout. Can be chained with `kubectl apply` to import into a different cluster and/or namespace."+
+		"\n\nExamples:"+
+		"\n\n# Export a service account from one cluster to another."+
+		"\n\nkubemcsa --kubeconfig=SOURCE_KUBECONFIG export my-sa | kubectl --kubeconfig=TARGET_KUBECONFIG apply -f -"+
+		"\n\n# Export a service account from one namespace to another in the same cluster."+
+		"\n\nkubemcsa export my-sa | kubectl -n=other apply -f -")
+	kubeconfig = exportCmd.Flag("kubeconfig", "(default: KUBECONFIG environment variable or ~/.kube/config) path to the kubeconfig file to use for the source cluster").ExistingFile()
+	context    = exportCmd.Flag("context", "(default: current context) name of the kubeconfig context to use for the source cluster").String()
+	namespace  = exportCmd.Flag("namespace", "(default: namespace associated with the selected context) namespace of the service account to export").Short('n').String()
+	exportName = exportCmd.Flag("as", "(default: name of the first token of the exported service account, i.e., the existing secret) name of the new secret template").PlaceHolder("EXPORT_NAME").String()
+	name       = exportCmd.Arg("NAME", "name of the service account to export").Required().String()
 )
 
 func main() {
-	kingpin.Version("0.5.1")
+	kingpin.Version("0.6.0")
 	kingpin.CommandLine.HelpFlag.Short('h')
 	switch kingpin.Parse() {
 	case "bootstrap":
@@ -41,5 +55,11 @@ func main() {
 		if err != nil {
 			kingpin.Fatalf("cannot bootstrap: %v", err)
 		}
+	case "export":
+		out, err := bootstrap.Export(*kubeconfig, *context, *namespace, *name, *exportName)
+		if err != nil {
+			kingpin.Fatalf("cannot bootstrap: %v", err)
+		}
+		fmt.Print(string(out))
 	}
 }

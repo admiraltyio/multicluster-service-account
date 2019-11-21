@@ -72,7 +72,7 @@ Note: you can also use multiple kubeconfig files, see below.
 Install multicluster-service-account in cluster1:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.5.1
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.6.0
 MANIFEST_URL=$RELEASE_URL/install.yaml
 kubectl apply -f $MANIFEST_URL --context $CONTEXT1
 ```
@@ -257,3 +257,16 @@ godoc -http=:6060
 ```
 
 then http://localhost:6060/pkg/admiralty.io/multicluster-service-account/
+
+## You Might Not Need Multicluster-Service-Account
+
+Sometimes, all you need is to import and mount one service account, or one service account per remote cluster.
+
+Multicluster-service-account simplifies that process by giving it a declarative API: import is handled by a CRD and controller, and automount is handled by an annotation and webhook, **but only after** an initial service account has been imported and mounted into the controller using `kubemcsa bootstrap`. Therefore, deploying multicluster-service-account only saves you imperative steps if you need to import and mount more than one service account. Otherwise, you may as well do it directly, i.e., bootstrap _your_ multi-cluster controller.
+
+That being said, multicluster-service-account also standardizes the process by combining service account token, Kubernetes API server address, and the equivalent kubeconfig into a secret. This format is used by `kubemcsa bootstrap` and by the controller subsequently. For those who just need that and can mount the resulting secret themselves, the `kubemcsa export` command was created, which can be chained with `kubectl apply` for one-off imperative imports. Example:
+
+```bash
+kubemcsa export --kubeconfig=SOURCE_KUBECONFIG SERVICE_ACCOUNT_NAME \
+  | kubectl apply --kubeconfig=TARGET_KUBECONFIG -f -
+```

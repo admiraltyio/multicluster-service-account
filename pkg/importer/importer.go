@@ -249,7 +249,7 @@ func (r *reconciler) makeSecrets(sai *v1alpha1.ServiceAccountImport) ([]*corev1.
 }
 
 func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server string, saSecret *corev1.Secret, scheme *runtime.Scheme) *corev1.Secret {
-	s := &corev1.Secret{}
+	s := ExportServiceAccountSecret(saSecret, server, sai.Name)
 
 	s.Namespace = sai.Namespace
 	s.GenerateName = sai.Name + "-token-"
@@ -257,23 +257,34 @@ func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server s
 	utilruntime.Must(controllerutil.SetControllerReference(sai, s, scheme))
 	// should not fail as long as scheme knows about types
 
+	s.Labels = map[string]string{
+		AnnotationKeyServiceAccountImportName: sai.Name,
+		remoteSecretUID:                       string(s.UID),
+	}
+
+	return s
+}
+
+func ExportServiceAccountSecret(saSecret *corev1.Secret, server, contextClusterUserName string) *corev1.Secret {
+	s := &corev1.Secret{}
+
 	kubeconfig, err := clientcmd.Write(clientcmdapi.Config{
-		CurrentContext: sai.Name,
+		CurrentContext: contextClusterUserName,
 		Contexts: map[string]*clientcmdapi.Context{
-			sai.Name: {
+			contextClusterUserName: {
 				Namespace: string(saSecret.Data["namespace"]),
-				Cluster:   sai.Name,
-				AuthInfo:  sai.Name,
+				Cluster:   contextClusterUserName,
+				AuthInfo:  contextClusterUserName,
 			},
 		},
 		Clusters: map[string]*clientcmdapi.Cluster{
-			sai.Name: {
+			contextClusterUserName: {
 				Server:                   server,
 				CertificateAuthorityData: saSecret.Data["ca.crt"],
 			},
 		},
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{
-			sai.Name: {
+			contextClusterUserName: {
 				Token: string(saSecret.Data["token"]),
 			},
 		},
@@ -287,11 +298,6 @@ func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server s
 	// that should be enough information to call a remote Kubernetes API,
 	// but let's add the standard kubeconfig as a convenience
 	s.Data["config"] = kubeconfig
-
-	s.Labels = map[string]string{
-		AnnotationKeyServiceAccountImportName: string(sai.Name),
-		remoteSecretUID:                       string(s.UID),
-	}
 
 	return s
 }

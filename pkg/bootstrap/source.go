@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 )
 
 type sourceCluster struct {
@@ -121,10 +122,18 @@ func (c sourceCluster) createClusterRoleBinding(targetClusterName string) error 
 
 func (c sourceCluster) waitForServiceAccountToken(targetClusterName string) (secretName string, err error) {
 	fmt.Printf("waiting until service account \"%s\" in namespace \"%s\" in source cluster \"%s\" has a token...\n", targetClusterName, namespace, c.name)
+	secretName, err = waitForServiceAccountToken(c.clientset, namespace, targetClusterName)
+	if err != nil {
+		return "", fmt.Errorf("in source cluster \"%s\": %v", c.name, err)
+	}
+	return secretName, nil
+}
+
+func waitForServiceAccountToken(clientset *kubernetes.Clientset, namespace, name string) (secretName string, err error) {
 	f := wait.ConditionFunc(func() (done bool, err error) {
-		getSA, err := c.clientset.CoreV1().ServiceAccounts(namespace).Get(targetClusterName, metav1.GetOptions{})
+		getSA, err := clientset.CoreV1().ServiceAccounts(namespace).Get(name, metav1.GetOptions{})
 		if err != nil {
-			return false, fmt.Errorf("cannot get service account \"%s\" in namespace \"%s\" in source cluster \"%s\": %v", targetClusterName, namespace, c.name, err)
+			return false, fmt.Errorf("cannot get service account \"%s\" in namespace \"%s\": %v", name, namespace, err)
 		}
 		if len(getSA.Secrets) > 0 {
 			secretName = getSA.Secrets[0].Name
@@ -139,12 +148,20 @@ func (c sourceCluster) waitForServiceAccountToken(targetClusterName string) (sec
 }
 
 func (c sourceCluster) getServiceAccountToken(secretName string) (*corev1.Secret, error) {
-	saSecret, err := c.clientset.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	saSecret, err := getServiceAccountToken(c.clientset, namespace, secretName)
 	if err != nil {
-		return nil, fmt.Errorf("cannot get secret \"%s\" in namespace \"%s\" in source cluster \"%s\": %v", secretName, namespace, c.name, err)
+		return nil, fmt.Errorf("in source cluster \"%s\": %v", c.name, err)
+	}
+	return saSecret, nil
+}
+
+func getServiceAccountToken(clientset *kubernetes.Clientset, namespace, name string) (*corev1.Secret, error) {
+	saSecret, err := clientset.CoreV1().Secrets(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot get secret \"%s\" in namespace \"%s\": %v", name, namespace, err)
 	}
 	if saSecret.Data == nil {
-		return nil, fmt.Errorf("secret \"%s\" in namespace \"%s\" in source cluster \"%s\" is empty", secretName, namespace, c.name)
+		return nil, fmt.Errorf("secret \"%s\" in namespace \"%s\" is empty", name, namespace)
 	}
 	return saSecret, nil
 }

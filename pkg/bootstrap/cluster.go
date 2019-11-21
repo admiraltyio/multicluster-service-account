@@ -19,9 +19,9 @@ package bootstrap
 import (
 	"fmt"
 
+	"admiralty.io/multicluster-service-account/pkg/config"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -33,10 +33,7 @@ type cluster struct {
 }
 
 func newCluster(name, kubeconfigPath, context string) (cluster, error) {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	rules.ExplicitPath = kubeconfigPath                              // if empty, env var or default path will be used instead
-	overrides := &clientcmd.ConfigOverrides{CurrentContext: context} // if context is empty, kubeconfig's current context will be used instead
-	cfgLoader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+	cfgLoader := config.LoaderForKubeconfigAndContext(kubeconfigPath, context)
 	cfgRaw, err := cfgLoader.RawConfig()
 	if err != nil {
 		return cluster{}, err // TODO allow running bootstrap with in-cluster config
