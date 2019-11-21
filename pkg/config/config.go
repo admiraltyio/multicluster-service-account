@@ -56,9 +56,7 @@ func AllNamedConfigsAndNamespaces() (map[string]ConfigAndNamespaceTuple, error) 
 	}
 	// add config and namespace for each kubeconfig context
 	// HACK: there may be a better way
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	overrides := &clientcmd.ConfigOverrides{}
-	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
+	loader := LoaderForKubeconfigAndContext("", "")
 	raw, err := loader.RawConfig()
 	if err != nil {
 		return nil, err
@@ -73,13 +71,36 @@ func AllNamedConfigsAndNamespaces() (map[string]ConfigAndNamespaceTuple, error) 
 	return out, nil
 }
 
+func rulesForKubeconfig(kubeconfig string) *clientcmd.ClientConfigLoadingRules {
+	if kubeconfig == "" {
+		return clientcmd.NewDefaultClientConfigLoadingRules()
+	} else {
+		return &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
+	}
+}
+
+func ConfigAndNamespaceForKubeconfigAndContext(kubeconfig string, context string) (*rest.Config, string, error) {
+	loader := LoaderForKubeconfigAndContext(kubeconfig, context)
+	return configAndNamespace(loader)
+}
+
+func AllContextsForKubeconfig(kubeconfig string) ([]string, error) {
+	loader := LoaderForKubeconfigAndContext(kubeconfig, "")
+	raw, err := loader.RawConfig()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for ctx := range raw.Contexts {
+		out = append(out, ctx)
+	}
+	return out, nil
+}
+
 // ConfigAndNamespaceForContext returns a rest.Config and namespace from a kubeconfig context
 // whose name is given as an argument. It it doesn't exist, an error is returned.
 func ConfigAndNamespaceForContext(context string) (*rest.Config, string, error) {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	overrides := &clientcmd.ConfigOverrides{CurrentContext: context}
-	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
-	return configAndNamespace(loader)
+	return ConfigAndNamespaceForKubeconfigAndContext("", context)
 }
 
 // ServiceAccountImportConfigAndNamespace returns a rest.Config and namespace from a mounted service account import.
@@ -275,4 +296,10 @@ func configAndNamespace(loader clientcmd.ClientConfig) (*rest.Config, string, er
 		return nil, "", err
 	}
 	return cfg, ns, nil
+}
+
+func LoaderForKubeconfigAndContext(kubeconfig string, context string) clientcmd.ClientConfig {
+	rules := rulesForKubeconfig(kubeconfig)
+	overrides := &clientcmd.ConfigOverrides{CurrentContext: context}
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
 }
