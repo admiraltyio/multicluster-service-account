@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 )
 
 type targetCluster struct {
@@ -63,8 +64,8 @@ func (c targetCluster) createServiceAccountImport(sourceClusterName string) (*v1
 	return sai, nil
 }
 
-func (c targetCluster) createServiceAccountImportToken(sai *v1alpha1.ServiceAccountImport, sourceServiceAccountToken *corev1.Secret, sourceClusterHost string) error {
-	saiSecret := importer.MakeServiceAccountImportSecret(sai, sourceClusterHost, sourceServiceAccountToken, scheme.Scheme)
+func (c targetCluster) createServiceAccountImportToken(sai *v1alpha1.ServiceAccountImport, sourceServiceAccountToken *corev1.Secret, sourceClusterCfg *rest.Config) error {
+	saiSecret := importer.MakeServiceAccountImportSecret(sai, sourceServiceAccountToken, sourceClusterCfg, scheme.Scheme)
 	saiSecret, err := c.clientset.CoreV1().Secrets(saiSecret.Namespace).Create(saiSecret)
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return fmt.Errorf("cannot create secret \"%s\" in namespace \"%s\" in target cluster \"%s\": %v", saiSecret.GenerateName, saiSecret.Namespace, c.name, err)

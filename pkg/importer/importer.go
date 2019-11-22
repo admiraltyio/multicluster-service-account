@@ -19,6 +19,7 @@ package importer // import "admiralty.io/multicluster-service-account/pkg/import
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/rest"
 	"log"
 	"reflect"
 
@@ -56,7 +57,7 @@ var remoteSecretUID = "multicluster.admiralty.io/remote-secret.uid"
 // TODO... import into multiple clusters with multicluster-controller
 func Add(mgr manager.Manager, src map[string]config.ConfigAndNamespaceTuple) error {
 	srcClients := make(map[string]client.Client)
-	srcURLs := make(map[string]string)
+	srcCfgs := make(map[string]*rest.Config)
 	for clusterName, cfgAndNs := range src { // using service account import names or kubeconfig context names as cluster names
 		cfg := cfgAndNs.Config
 		m, err := apiutil.NewDiscoveryRESTMapper(cfg)
@@ -68,13 +69,13 @@ func Add(mgr manager.Manager, src map[string]config.ConfigAndNamespaceTuple) err
 			return err
 		}
 		srcClients[clusterName] = c
-		srcURLs[clusterName] = cfg.Host
+		srcCfgs[clusterName] = cfg
 	}
 	c, err := controller.New(ctrlName, mgr, controller.Options{Reconciler: &reconciler{
 		destClient: mgr.GetClient(),
 		destScheme: mgr.GetScheme(),
 		srcClients: srcClients,
-		srcURLs:    srcURLs,
+		srcCfgs:    srcCfgs,
 	}})
 	if err != nil {
 		return err
@@ -110,7 +111,7 @@ type reconciler struct {
 	destClient client.Client
 	destScheme *runtime.Scheme
 	srcClients map[string]client.Client
-	srcURLs    map[string]string
+	srcCfgs    map[string]*rest.Config
 }
 
 func (r *reconciler) Reconcile(req reconcile.Request) (reconcile.Result, error) {
@@ -241,15 +242,15 @@ func (r *reconciler) makeSecrets(sai *v1alpha1.ServiceAccountImport) ([]*corev1.
 			return nil, fmt.Errorf("cannot get remote ServiceAccount token Secret: %v", err)
 		}
 
-		ds := MakeServiceAccountImportSecret(sai, r.srcURLs[clusterName], s, r.destScheme)
+		ds := MakeServiceAccountImportSecret(sai, s, r.srcCfgs[clusterName], r.destScheme)
 		dss = append(dss, ds)
 	}
 
 	return dss, nil
 }
 
-func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server string, saSecret *corev1.Secret, scheme *runtime.Scheme) *corev1.Secret {
-	s := ExportServiceAccountSecret(saSecret, server, sai.Name)
+func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, saSecret *corev1.Secret, cfg *rest.Config, scheme *runtime.Scheme) *corev1.Secret {
+	s := ExportServiceAccountSecret(saSecret, cfg, sai.Name)
 
 	s.Namespace = sai.Namespace
 	s.GenerateName = sai.Name + "-token-"
@@ -265,9 +266,17 @@ func MakeServiceAccountImportSecret(sai *v1alpha1.ServiceAccountImport, server s
 	return s
 }
 
-func ExportServiceAccountSecret(saSecret *corev1.Secret, server, contextClusterUserName string) *corev1.Secret {
+func ExportServiceAccountSecret(saSecret *corev1.Secret, cfg *rest.Config, contextClusterUserName string) *corev1.Secret {
 	s := &corev1.Secret{}
 
+	s.Data = make(map[string][]byte, 5)
+	s.Data["server"] = []byte(cfg.Host)
+	s.Data["ca.crt"] = cfg.CAData
+	s.Data["namespace"] = saSecret.Data["namespace"]
+	s.Data["token"] = saSecret.Data["token"]
+
+	// that should be enough information to call a remote Kubernetes API,
+	// but let's add the standard kubeconfig as a convenience
 	kubeconfig, err := clientcmd.Write(clientcmdapi.Config{
 		CurrentContext: contextClusterUserName,
 		Contexts: map[string]*clientcmdapi.Context{
@@ -279,8 +288,8 @@ func ExportServiceAccountSecret(saSecret *corev1.Secret, server, contextClusterU
 		},
 		Clusters: map[string]*clientcmdapi.Cluster{
 			contextClusterUserName: {
-				Server:                   server,
-				CertificateAuthorityData: saSecret.Data["ca.crt"],
+				Server:                   cfg.Host,
+				CertificateAuthorityData: cfg.CAData,
 			},
 		},
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{
@@ -290,13 +299,6 @@ func ExportServiceAccountSecret(saSecret *corev1.Secret, server, contextClusterU
 		},
 	})
 	utilruntime.Must(err) // encoding errors should not happen
-	s.Data = make(map[string][]byte, len(saSecret.Data)+2)
-	for k, v := range saSecret.Data {
-		s.Data[k] = v
-	} // includes ca.crt, namespace, and token
-	s.Data["server"] = []byte(server)
-	// that should be enough information to call a remote Kubernetes API,
-	// but let's add the standard kubeconfig as a convenience
 	s.Data["config"] = kubeconfig
 
 	return s

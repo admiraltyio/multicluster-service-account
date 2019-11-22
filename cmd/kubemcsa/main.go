@@ -17,8 +17,9 @@ limitations under the License.
 package main
 
 import (
-	"admiralty.io/multicluster-service-account/pkg/bootstrap"
 	"fmt"
+
+	"admiralty.io/multicluster-service-account/pkg/bootstrap"
 	"gopkg.in/alecthomas/kingpin.v2"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
@@ -47,7 +48,7 @@ var (
 )
 
 func main() {
-	kingpin.Version("0.6.0")
+	kingpin.Version("0.6.1")
 	kingpin.CommandLine.HelpFlag.Short('h')
 	switch kingpin.Parse() {
 	case "bootstrap":

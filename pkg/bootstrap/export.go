@@ -46,9 +46,9 @@ func Export(kubeconfig, context, namespace, name, exportName string) ([]byte, er
 	if exportName == "" {
 		exportName = saSecret.Name
 	}
-	exportSecret := importer.ExportServiceAccountSecret(saSecret, cfg.Host, exportName)
+	exportSecret := importer.ExportServiceAccountSecret(saSecret, cfg, exportName)
 	exportSecret.Name = exportName
-	// HACK fill un TypeMeta TODO use apimachinery encoder
+	// HACK fill in TypeMeta TODO use apimachinery encoder
 	exportSecret.APIVersion = "v1"
 	exportSecret.Kind = "Secret"
 	out, err := yaml.Marshal(exportSecret)

@@ -22,6 +22,7 @@ import (
 	"admiralty.io/multicluster-service-account/pkg/config"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,7 +30,7 @@ type cluster struct {
 	name      string
 	client    client.Client
 	clientset *kubernetes.Clientset
-	host      string
+	cfg       *rest.Config
 }
 
 func newCluster(name, kubeconfigPath, context string) (cluster, error) {
@@ -66,6 +67,6 @@ func newCluster(name, kubeconfigPath, context string) (cluster, error) {
 		name:      name,
 		client:    client,
 		clientset: clientset,
-		host:      cfg.Host,
+		cfg:       cfg,
 	}, nil
 }

@@ -79,7 +79,7 @@ func bootstrapClusters(source, target cluster) error {
 	if err != nil {
 		return err
 	}
-	err = dstCluster.createServiceAccountImportToken(sai, saSecret, srcCluster.host)
+	err = dstCluster.createServiceAccountImportToken(sai, saSecret, srcCluster.cfg)
 	if err != nil {
 		return err
 	}

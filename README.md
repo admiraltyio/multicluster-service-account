@@ -47,7 +47,7 @@ Multicluster-service-account consists of:
           server: ...
           config: ...
         ```
-      `ca.crt`, `namespace` and `token` are copied from the source service account secret. `server` is added to locate the remote Kubernetes API (FYI, regular service accounts simply call their namespace's `kubernetes` Service). Those four fields contain enough information to call a remote Kubernetes API, but require custom code to be loaded as a Kubernetes client configuration (cf. 4., below). Therefore, a fifth field is provided as a convenience: the `config` field combines the four first fields as a standard [kubeconfig](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/) file, to make it even easier to use multicluster-service-account, without any code change, with clients written in any language.
+      `namespace` and `token` are copied from the source service account secret. `server` and `ca.crt` are added to securely locate the remote Kubernetes API (FYI, regular service accounts simply call their namespace's `kubernetes` Service). Those four fields contain enough information to call a remote Kubernetes API, but require custom code to be loaded as a Kubernetes client configuration (cf. 4., below). Therefore, a fifth field is provided as a convenience: the `config` field combines the four first fields as a standard [kubeconfig](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/) file, to make it even easier to use multicluster-service-account, without any code change, with clients written in any language.
 1. a dynamic admission webhook to automount service account import secrets inside annotated pods, the same way regular service accounts are automounted inside Pods;
     - To automount the sample secret from above inside a pod, you would annotate the pod with `multicluster.admiralty.io/service-account-import.name=cluster2-default-pod-lister`. To mount multiple service account imports inside a single pod, append their names to the pod annotation, separated by commas. The pod and service account imports must be in the same namespace, and that namespace must itself be annotated with `multicluster-service-account=enabled`.
     - The sample secret would be mounted at `/var/run/secrets/admiralty.io/serviceaccountimports/cluster2-default-pod-lister`. Most Kubernetes clients accept a `--kubeconfig` option or a `KUBECONFIG` environment variable, which you would set to `/var/run/secrets/admiralty.io/serviceaccountimports/cluster2-default-pod-lister/config`.
@@ -72,7 +72,7 @@ Note: you can also use multiple kubeconfig files, see below.
 Install multicluster-service-account in cluster1:
 
 ```bash
-RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.6.0
+RELEASE_URL=https://github.com/admiraltyio/multicluster-service-account/releases/download/v0.6.1
 MANIFEST_URL=$RELEASE_URL/install.yaml
 kubectl apply -f $MANIFEST_URL --context $CONTEXT1
 ```
